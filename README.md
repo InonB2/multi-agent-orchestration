@@ -75,6 +75,28 @@ python scripts/agent_config.py show --agent codex
 | `task_spec.py` | Enforces pre-task specs for M/L/XL tasks before execution |
 | `agent_config.py` | Loads per-agent TOML config with project-level deep-merge overrides |
 
+## Task Schema
+
+Tasks live in `tasks/active_tasks.json`. Each task looks like this:
+
+```json
+{
+  "task_id": "TASK-001",
+  "title": "Add POST /items route with Zod validation",
+  "priority": "high",
+  "assigned_to": "coder-agent",
+  "tested_by": "qa-agent",
+  "status": "backlog",
+  "preferred_provider": "codex",
+  "complexity": "S",
+  "notes": ""
+}
+```
+
+Status flow: `backlog → in_progress → tested → done` (or `blocked` on rate limit).
+
+See `tasks/active_tasks.example.json` for a complete example.
+
 ## Routing Rules
 
 Tasks are routed using keyword heuristics informed by benchmark-backed capability research — see [docs/model_capability_table.md](docs/model_capability_table.md) for the full routing rationale.
@@ -100,6 +122,24 @@ When a model hits its limit mid-task:
 1. Write a checkpoint with `checkpoint.py save`
 2. The task is queued in `tasks/queue/resume_queue.json`
 3. At the next session start, read the queue and re-dispatch
+
+## Why not LangGraph / CrewAI / AutoGen?
+
+Those are excellent frameworks — but they solve a different problem.
+
+| Framework | Strength | Gap |
+|-----------|----------|-----|
+| LangGraph | Stateful graph workflows | No multi-model routing by capability |
+| CrewAI | Role-based agent teams | No rate-limit checkpoint-resume |
+| AutoGen | Conversational multi-agent | Assumes one LLM provider |
+| Semantic Kernel | Enterprise .NET/Python | Complex setup, no routing table |
+
+This framework is for the developer who **runs multiple AI providers daily** (Claude Code + Codex CLI + Gemini) and needs:
+1. Tasks routed to the right model by actual benchmark strength
+2. Work saved and resumed automatically when a model hits its rate limit
+3. Zero new infrastructure — just Python scripts and JSON files
+
+If you need graph-based workflows or conversational agents, use LangGraph or CrewAI. If you need multi-model routing with rate-limit resilience, this is for you.
 
 ## Agent Config
 
