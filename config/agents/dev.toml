@@ -1,0 +1,19 @@
+# dev.toml — The DevOps & Cloud Engineer
+
+[agent]
+max_task_size   = "L"
+preferred_model = "claude-code"
+qa_gate         = "vera"       # Vera validates CI config and deployment pipelines
+handoff_to      = "finn"       # Infra triage issues escalate to Finn
+
+[task_types]
+accepts = ["ci", "cd", "deploy", "github actions", "workflow", "docker", "env vars", "secrets", "infrastructure", "pipeline"]
+rejects = ["design", "copywrite", "database schema", "mobile ui", "linkedin"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

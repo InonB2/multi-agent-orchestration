@@ -1,0 +1,19 @@
+# andy.toml — The Orchestrator
+
+[agent]
+max_task_size   = "XL"
+preferred_model = "claude-code"
+qa_gate         = ""           # Orchestrator is the final arbiter; no external QA gate
+handoff_to      = ""
+
+[task_types]
+accepts = ["orchestrate", "plan", "delegate", "decompose", "coordinate", "pipeline", "workflow", "subagent", "multi-agent"]
+rejects = ["implement", "write code", "design", "copywrite"]
+
+[rate_limit]
+notify_at_pct = 80
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "session_logs/"

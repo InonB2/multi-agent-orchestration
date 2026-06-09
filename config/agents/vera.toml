@@ -1,0 +1,19 @@
+# vera.toml — The QA Inspector
+
+[agent]
+max_task_size   = "M"
+preferred_model = "claude-code"
+qa_gate         = ""           # Vera IS the QA gate for UI; no second layer
+handoff_to      = ""
+
+[task_types]
+accepts = ["qa", "accessibility", "wcag", "visual regression", "responsive", "lighthouse", "smoke test", "ui audit", "contrast check", "keyboard navigation"]
+rejects = ["implement", "security audit", "database", "copywrite", "devops", "mobile native"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

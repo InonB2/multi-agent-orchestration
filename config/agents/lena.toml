@@ -1,0 +1,19 @@
+# lena.toml — The UI/UX Designer
+
+[agent]
+max_task_size   = "L"
+preferred_model = "claude-code"
+qa_gate         = "vera"       # Vera checks design outputs for WCAG compliance
+handoff_to      = "rex"        # Design briefs handed off to web developer for implementation
+
+[task_types]
+accepts = ["design", "ui", "ux", "wireframe", "visual", "design brief", "design system", "color palette", "typography", "wcag", "layout", "mockup", "prototype"]
+rejects = ["implement", "security audit", "database", "copywrite", "mobile code"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/design/"
+report_path      = "inbox/"

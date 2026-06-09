@@ -1,0 +1,19 @@
+# finn.toml — The Infrastructure Triage Engineer
+
+[agent]
+max_task_size   = "M"
+preferred_model = "claude-code"
+qa_gate         = ""
+handoff_to      = "dev"        # Non-triage infra escalated to Dev
+
+[task_types]
+accepts = ["triage", "mcp health", "bot recovery", "service restart", "env var audit", "health check", "port conflict", "watchdog", "diagnostics", "plugin repair", "token rotate"]
+rejects = ["design", "copywrite", "database schema", "frontend", "mobile"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

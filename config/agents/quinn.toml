@@ -1,0 +1,19 @@
+# quinn.toml — The Logic & Content Reviewer
+
+[agent]
+max_task_size   = "M"
+preferred_model = "claude-code"
+qa_gate         = "jasmin"     # Security flags escalated to Jasmin
+handoff_to      = "jasmin"
+
+[task_types]
+accepts = ["logic review", "content review", "python script review", "sql migration review", "ci config review", "automation validation", "accuracy check", "correctness audit", "script qa"]
+rejects = ["implement", "design", "frontend", "mobile", "security audit", "deploy"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

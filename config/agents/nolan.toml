@@ -1,0 +1,19 @@
+# nolan.toml — The Agent Creator & Integrator
+
+[agent]
+max_task_size   = "M"
+preferred_model = "claude-code"
+qa_gate         = ""
+handoff_to      = ""
+
+[task_types]
+accepts = ["onboard", "create agent", "agent file", "roster update", "persona", "inbox scaffold", "integrate agent"]
+rejects = ["implement", "security audit", "database", "frontend", "copywrite"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "agents/"
+report_path      = "inbox/"

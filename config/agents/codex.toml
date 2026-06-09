@@ -1,0 +1,22 @@
+# codex.toml — Fallback Coder (OpenAI Codex CLI)
+# Activated when Claude is rate-limited and coding tasks are queued.
+# Context loaded from: AGENTS.md + scratchpad/handoff_latest.md
+# QA gate: Jasmin
+
+[agent]
+max_task_size   = "M"
+preferred_model = "codex"
+qa_gate         = "jasmin"
+handoff_to      = "jasmin"
+
+[task_types]
+accepts = ["implement", "unit test", "pr review", "single file", "patch", "refactor", "fix", "typescript", "python script"]
+rejects = ["multi-repo", "orchestrate", "design", "copywrite", "database schema", "security audit", "devops"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

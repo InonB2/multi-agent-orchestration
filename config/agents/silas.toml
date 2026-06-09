@@ -1,0 +1,19 @@
+# silas.toml — The Database Architect
+
+[agent]
+max_task_size   = "L"
+preferred_model = "claude-code"
+qa_gate         = "jasmin"     # Jasmin reviews all schema migrations for security
+handoff_to      = "jasmin"
+
+[task_types]
+accepts = ["schema", "migration", "rls", "database", "sql", "supabase", "sqlite", "pgvector", "seed data", "type codegen", "db design", "index", "trigger", "foreign key"]
+rejects = ["frontend", "design", "copywrite", "mobile native", "bot automation"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

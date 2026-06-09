@@ -1,0 +1,19 @@
+# sage.toml — The Social Media & Brand Strategist
+
+[agent]
+max_task_size   = "M"
+preferred_model = "claude-code"
+qa_gate         = ""           # Posts reviewed by orchestrator before publishing
+handoff_to      = ""
+
+[task_types]
+accepts = ["linkedin", "post", "personal brand", "content", "thought leadership", "newsletter", "profile update", "social media"]
+rejects = ["implement", "security audit", "database", "frontend", "mobile", "devops"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/posts/"
+report_path      = "inbox/"

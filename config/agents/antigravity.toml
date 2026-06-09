@@ -1,0 +1,22 @@
+# antigravity.toml — Fallback Researcher / Planner (Antigravity CLI: `agy`)
+# Activated when Claude is rate-limited and research/planning tasks are queued.
+# Context loaded from: GEMINI.md + scratchpad/handoff_latest.md
+# QA gate: Researcher -> Coder chain
+
+[agent]
+max_task_size   = "L"
+preferred_model = "antigravity"
+qa_gate         = "tomy"
+handoff_to      = "yoni"
+
+[task_types]
+accepts = ["research", "browser", "ui automation", "long document", "summarize", "analyze", "plan", "evaluate", "web search", "screenshot", "e2e"]
+rejects = ["implement", "security audit", "database schema", "mobile native", "deploy", "copywrite"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/research/"
+report_path      = "inbox/"

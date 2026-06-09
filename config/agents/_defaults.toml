@@ -1,0 +1,21 @@
+# _defaults.toml — Base defaults for all agents.
+# Per-agent TOML files override these values.
+# Merge order: _defaults.toml < [agent].toml
+
+[agent]
+max_task_size   = "L"          # S, M, L, XL — max complexity this agent accepts
+preferred_model = "claude-code"
+qa_gate         = ""           # which agent does QA on this agent's output
+handoff_to      = ""           # default handoff agent on rate limit
+
+[task_types]
+accepts = []                   # task type keywords this agent specialises in
+rejects = []                   # task types to never route here
+
+[rate_limit]
+notify_at_pct = 85             # write checkpoint when usage hits this %
+resume_queue  = true           # add to resume queue on rate limit hit
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

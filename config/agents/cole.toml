@@ -1,0 +1,19 @@
+# cole.toml — The Conversion Copywriter
+
+[agent]
+max_task_size   = "L"
+preferred_model = "claude-code"
+qa_gate         = "jasmin"     # Jasmin verifies accuracy
+handoff_to      = "jasmin"
+
+[task_types]
+accepts = ["cv", "cover letter", "write", "copywrite", "proposal", "tailored cv", "resume", "email draft", "pitch", "website copy", "ats", "humanizer"]
+rejects = ["implement", "security audit", "database", "frontend", "mobile", "devops"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

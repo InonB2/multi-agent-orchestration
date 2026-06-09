@@ -1,0 +1,19 @@
+# tomy.toml — The Researcher
+
+[agent]
+max_task_size   = "L"
+preferred_model = "claude-code"
+qa_gate         = ""           # Research deliverables reviewed by orchestrator or requesting agent
+handoff_to      = "yoni"       # Hand off implementation follow-ups to coder
+
+[task_types]
+accepts = ["research", "summarize", "analyze", "evaluate", "benchmark", "compare", "literature review", "web search", "api exploration", "tech stack analysis", "documentation", "transcript"]
+rejects = ["implement", "deploy", "write code", "security audit"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/research/"
+report_path      = "inbox/"

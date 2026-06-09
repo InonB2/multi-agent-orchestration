@@ -1,0 +1,19 @@
+# jasmin.toml — The Reviewer (Security & Logic Auditor)
+
+[agent]
+max_task_size   = "L"
+preferred_model = "claude-code"
+qa_gate         = ""           # Jasmin IS the QA gate; no second QA layer
+handoff_to      = ""
+
+[task_types]
+accepts = ["security audit", "code review", "qa", "review", "logic audit", "rls review", "auth review", "input validation", "adversarial review", "qa gate"]
+rejects = ["implement", "design", "copywrite", "deploy"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

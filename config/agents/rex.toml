@@ -1,0 +1,19 @@
+# rex.toml — The Web Developer
+
+[agent]
+max_task_size   = "L"
+preferred_model = "claude-code"
+qa_gate         = "vera"       # Vera QA on all UI deliverables
+handoff_to      = "vera"
+
+[task_types]
+accepts = ["frontend", "react", "typescript", "component", "dashboard", "website", "html", "css", "javascript", "accessibility", "seo", "performance", "responsive"]
+rejects = ["security audit", "database schema", "mobile native", "devops"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

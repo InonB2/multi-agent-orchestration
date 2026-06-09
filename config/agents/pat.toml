@@ -1,0 +1,19 @@
+# pat.toml — The HR Researcher
+
+[agent]
+max_task_size   = "M"
+preferred_model = "claude-code"
+qa_gate         = "nolan"      # Nolan validates profiles before agent creation
+handoff_to      = "nolan"
+
+[task_types]
+accepts = ["profile", "agent brief", "capability research", "role blueprint", "candidate profile", "talent analysis"]
+rejects = ["implement", "deploy", "security audit", "database", "frontend"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "scratchpad/"
+report_path      = "inbox/"

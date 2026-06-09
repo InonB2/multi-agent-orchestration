@@ -1,0 +1,19 @@
+# mack.toml — The Automation Engineer
+
+[agent]
+max_task_size   = "L"
+preferred_model = "claude-code"
+qa_gate         = "jasmin"     # Jasmin reviews all automation scripts for security
+handoff_to      = "jasmin"
+
+[task_types]
+accepts = ["automate", "webhook", "api integration", "script", "mcp", "telegram", "bot", "oauth", "scheduler", "notification", "github sync", "task scheduler", "deployment automation"]
+rejects = ["design", "copywrite", "database schema", "mobile native", "security audit"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"

@@ -1,0 +1,19 @@
+# maya.toml — The Web Security Auditor
+
+[agent]
+max_task_size   = "L"
+preferred_model = "claude-code"
+qa_gate         = "jasmin"     # Critical findings escalated to Jasmin for sign-off
+handoff_to      = "jasmin"
+
+[task_types]
+accepts = ["owasp", "security audit", "header audit", "pii exposure", "cwe", "api surface audit", "pentest", "rate limit", "cors", "auth review"]
+rejects = ["implement", "deploy", "design", "copywrite", "mobile"]
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "inbox/"
