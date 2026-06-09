@@ -1,0 +1,41 @@
+{
+  "last_updated": "2026-01-01 (example)",
+  "tasks": [
+    {
+      "task_id": "EXAMPLE-001",
+      "title": "Add POST /items route with Zod validation",
+      "priority": "high",
+      "assigned_to": "coder-agent",
+      "tested_by": "qa-agent",
+      "status": "in_progress",
+      "phase": "coding",
+      "preferred_provider": "codex",
+      "complexity": "S",
+      "notes": "Claimed 2026-01-01. Writing route handler + schema validation."
+    },
+    {
+      "task_id": "EXAMPLE-002",
+      "title": "Research competitor pricing models for SaaS positioning",
+      "priority": "medium",
+      "assigned_to": "research-agent",
+      "tested_by": "—",
+      "status": "backlog",
+      "phase": "—",
+      "preferred_provider": "antigravity",
+      "complexity": "M",
+      "notes": "Route: long-context research → antigravity."
+    },
+    {
+      "task_id": "EXAMPLE-003",
+      "title": "Refactor auth middleware — session token storage compliance",
+      "priority": "critical",
+      "assigned_to": "senior-coder",
+      "tested_by": "security-reviewer",
+      "status": "done",
+      "phase": "done",
+      "preferred_provider": "claude-code",
+      "complexity": "L",
+      "notes": "DONE. Multi-file refactor across 4 modules. Security reviewer: PASS."
+    }
+  ]
+}
