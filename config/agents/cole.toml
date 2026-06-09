@@ -15,5 +15,5 @@ notify_at_pct = 85
 resume_queue  = true
 
 [output]
-deliverable_path = "owner_inbox/archive/cv_archive/"
+deliverable_path = "output/"
 report_path      = "agents/andy/inbox/"

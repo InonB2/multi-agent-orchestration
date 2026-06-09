@@ -42,9 +42,6 @@ python scripts/task_router.py
 # Preview routing without writing
 python scripts/task_router.py --dry-run
 
-# Route a single task
-python scripts/task_router.py --task-id TASK-001
-
 # Save a mid-task checkpoint
 python scripts/checkpoint.py save \
   --task TASK-001 \
@@ -80,7 +77,9 @@ python scripts/agent_config.py show --agent codex
 
 ## Routing Rules
 
-Tasks are routed by model capability, not keyword matching. The 8 rules (in priority order):
+Tasks are routed using keyword heuristics informed by benchmark-backed capability research — see [docs/model_capability_table.md](docs/model_capability_table.md) for the full routing rationale.
+
+The 8 rules (in priority order):
 
 1. Browser / E2E / scraping → **Antigravity**
 2. Long-context research / synthesis → **Antigravity**
