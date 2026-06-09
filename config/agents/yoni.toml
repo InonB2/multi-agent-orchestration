@@ -3,7 +3,7 @@
 [agent]
 max_task_size   = "XL"
 preferred_model = "claude-code"
-qa_gate         = "jasmin"     # All output reviewed by Jasmin before done
+qa_gate         = "jasmin"     # All Yoni output reviewed by Jasmin before done
 handoff_to      = "jasmin"
 
 [task_types]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "inbox/"
+report_path      = "agents/andy/inbox/"

@@ -3,8 +3,8 @@
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = ""           # Research deliverables reviewed by orchestrator or requesting agent
-handoff_to      = "yoni"       # Hand off implementation follow-ups to coder
+qa_gate         = ""           # Research deliverables reviewed by Andy or requesting agent
+handoff_to      = "yoni"       # Hand off implementation follow-ups to Yoni
 
 [task_types]
 accepts = ["research", "summarize", "analyze", "evaluate", "benchmark", "compare", "literature review", "web search", "api exploration", "tech stack analysis", "documentation", "transcript"]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/research/"
-report_path      = "inbox/"
+report_path      = "agents/andy/inbox/"

@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "scratchpad/"
-report_path      = "inbox/"
+report_path      = "agents/andy/inbox/"

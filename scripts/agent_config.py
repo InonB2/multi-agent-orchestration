@@ -186,7 +186,7 @@ def main():
 
     # get
     p_get = sub.add_parser("get", help="Return a single config value for an agent.")
-    p_get.add_argument("--agent", required=True, help="Agent name (e.g. orchestrator, codex)")
+    p_get.add_argument("--agent", required=True, help="Agent name (e.g. andy, codex)")
     p_get.add_argument("--key",   required=True,
                        help="Dot-notation key, e.g. agent.max_task_size")
 

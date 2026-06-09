@@ -7,8 +7,8 @@ qa_gate         = "vera"       # Vera QA on all mobile UI outputs
 handoff_to      = "vera"
 
 [task_types]
-accepts = ["mobile", "react native", "expo", "ios", "android", "typescript", "device testing", "navigation", "async storage", "push notification", "deep link", "eas"]
-rejects = ["security audit", "database schema", "frontend web", "copywrite", "devops"]
+accepts = ["mobile", "react native", "expo", "ios", "android", "typescript", "device testing", "navigation", "async storage", "push notification", "deep link", "eas", "bare rn", "vireoreact", "ar mobile"]
+rejects = ["security audit", "database schema", "frontend web", "copywrite", "linkedin", "devops"]
 
 [rate_limit]
 notify_at_pct = 85
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "inbox/"
+report_path      = "agents/andy/inbox/"

@@ -3,7 +3,7 @@
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = "jasmin"     # Jasmin verifies accuracy
+qa_gate         = "jasmin"     # Jasmin verifies ATS compliance and accuracy
 handoff_to      = "jasmin"
 
 [task_types]
@@ -15,5 +15,5 @@ notify_at_pct = 85
 resume_queue  = true
 
 [output]
-deliverable_path = "owner_inbox/"
-report_path      = "inbox/"
+deliverable_path = "owner_inbox/archive/cv_archive/"
+report_path      = "agents/andy/inbox/"

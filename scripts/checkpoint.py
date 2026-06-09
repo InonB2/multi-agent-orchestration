@@ -56,7 +56,7 @@ def _validate_task_id(task_id: str):
 
 
 def _snapshot_path(task_id: str) -> Path:
-    # containment check — belt-and-suspenders after regex validation
+    # BLOCKER-1: containment check — belt-and-suspenders after regex validation
     path = SNAPSHOTS_DIR / "{}_checkpoint.json".format(task_id)
     resolved = path.resolve()
     snapshots_resolved = SNAPSHOTS_DIR.resolve()
@@ -79,7 +79,7 @@ def _read_queue() -> list:
 
 def _write_queue(entries: list):
     _ensure_dirs()
-    # atomic write — prevents corruption on interrupted write
+    # MAJOR-1: atomic write — prevents corruption on interrupted write
     tmp = QUEUE_FILE.with_suffix('.tmp')
     tmp.write_text(
         json.dumps(entries, indent=2, ensure_ascii=False),
@@ -122,7 +122,7 @@ def cmd_save(args):
     if not task_id:
         print("[ERROR] --task TASK_ID is required", file=sys.stderr)
         sys.exit(1)
-    _validate_task_id(task_id)
+    _validate_task_id(task_id)  # BLOCKER-1 / MAJOR-3
 
     _ensure_dirs()
 
@@ -153,7 +153,7 @@ def cmd_save(args):
     }
 
     snap_path = _snapshot_path(task_id)
-    # atomic write — prevents corruption on interrupted write
+    # MAJOR-1: atomic write — prevents corruption on interrupted write
     tmp_snap = snap_path.with_suffix('.tmp')
     tmp_snap.write_text(
         json.dumps(checkpoint, indent=2, ensure_ascii=False),
@@ -170,7 +170,7 @@ def cmd_save(args):
         "model": model,
         "resume_at_estimate": "next_session",
         "interrupted_by": interrupted_by,
-        "checkpoint_path": str(snap_path.relative_to(ROOT)),
+        "checkpoint_path": str(snap_path.relative_to(ROOT)),  # BLOCKER-3: store relative, not absolute
         "queued_at": datetime.utcnow().isoformat() + "Z",
         "resumed": False,
     })
@@ -184,7 +184,7 @@ def cmd_read(args):
     if not task_id:
         print("[ERROR] --task TASK_ID is required", file=sys.stderr)
         sys.exit(1)
-    _validate_task_id(task_id)
+    _validate_task_id(task_id)  # MAJOR-3
 
     snap_path = _snapshot_path(task_id)
     if not snap_path.exists():
@@ -214,7 +214,7 @@ def cmd_list_resumable(args):
         ))
         chk_rel = entry.get("checkpoint_path", "")
         chk_display = str(ROOT / chk_rel) if chk_rel else "?"
-        print("         checkpoint: {}".format(chk_display))
+        print("         checkpoint: {}".format(chk_display))  # BLOCKER-3: reconstruct abs path from stored relative
         print()
 
 
@@ -224,7 +224,7 @@ def cmd_mark_resumed(args):
     if not task_id:
         print("[ERROR] --task TASK_ID is required", file=sys.stderr)
         sys.exit(1)
-    _validate_task_id(task_id)
+    _validate_task_id(task_id)  # MAJOR-3
 
     queue = _read_queue()
     before_count = len(queue)

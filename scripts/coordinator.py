@@ -3,7 +3,7 @@
 coordinator.py — Task lifecycle manager for multi-model AI agents.
 
 Manages claim, track, checkpoint, and complete for tasks in active_tasks.json.
-Integrates with checkpoint.py rather than duplicating logic.
+Integrates with task_tracker.py and checkpoint.py rather than duplicating logic.
 
 Commands:
     python scripts/coordinator.py claim --task TASK_ID --model MODEL_NAME
@@ -55,7 +55,7 @@ def _load_tasks() -> dict:
 
 
 def _save_tasks(data: dict):
-    # atomic write — prevents corruption on interrupted write
+    # MAJOR-1: atomic write — prevents corruption on interrupted write
     tmp = TASKS_FILE.with_suffix('.tmp')
     tmp.write_text(
         json.dumps(data, indent=2, ensure_ascii=False),
@@ -80,7 +80,7 @@ _TASK_ID_RE = re.compile(r'^[A-Za-z0-9_\-]+$')
 
 
 def _validate_task_id(task_id: str):
-    """Reject task IDs that don't match the safe allowlist pattern."""
+    """Reject task IDs that don't match the safe allowlist pattern. MAJOR-3 / BLOCKER-1."""
     if not task_id or not _TASK_ID_RE.match(task_id):
         print(
             "[ERROR] Invalid task_id '{}': must match ^[A-Za-z0-9_\\-]+$".format(task_id),
@@ -123,7 +123,7 @@ def cmd_claim(args):
     if not task_id or not model:
         print("[ERROR] --task and --model are required", file=sys.stderr)
         sys.exit(1)
-    _validate_task_id(task_id)
+    _validate_task_id(task_id)  # MAJOR-3
 
     data = _load_tasks()
     task = _find_task(data, task_id)
@@ -152,7 +152,7 @@ def cmd_update(args):
     if not task_id or not phase:
         print("[ERROR] --task and --phase are required", file=sys.stderr)
         sys.exit(1)
-    _validate_task_id(task_id)
+    _validate_task_id(task_id)  # MAJOR-3
 
     data = _load_tasks()
     task = _find_task(data, task_id)
@@ -187,7 +187,7 @@ def cmd_checkpoint(args):
     if not task_id:
         print("[ERROR] --task TASK_ID is required", file=sys.stderr)
         sys.exit(1)
-    _validate_task_id(task_id)
+    _validate_task_id(task_id)  # MAJOR-3
 
     checkpoint_args = ["save", "--task", task_id,
                        "--done", done,
@@ -220,7 +220,7 @@ def cmd_complete(args):
     if not task_id:
         print("[ERROR] --task is required", file=sys.stderr)
         sys.exit(1)
-    _validate_task_id(task_id)
+    _validate_task_id(task_id)  # MAJOR-3
 
     data = _load_tasks()
     task = _find_task(data, task_id)
@@ -259,7 +259,7 @@ def cmd_status(args):
     if not task_id:
         print("[ERROR] --task is required", file=sys.stderr)
         sys.exit(1)
-    _validate_task_id(task_id)
+    _validate_task_id(task_id)  # MAJOR-3
 
     data = _load_tasks()
     task = _find_task(data, task_id)
@@ -286,6 +286,7 @@ def cmd_status(args):
     notes = task.get("notes", "") or ""
     if notes:
         print("\n  notes (truncated):")
+        # Show first 300 chars safely
         safe_notes = notes[:300].encode("ascii", errors="replace").decode("ascii")
         print("    {}".format(safe_notes))
     print()
@@ -332,6 +333,7 @@ def _get_flag(args: list, flag: str, required: bool = True) -> str:
         idx = args.index(flag)
         if idx + 1 < len(args):
             val = args[idx + 1]
+            # Allow multi-word values up to next --flag
             return val
     if required:
         print("[ERROR] {} is required".format(flag), file=sys.stderr)

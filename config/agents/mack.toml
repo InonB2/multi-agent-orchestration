@@ -7,7 +7,7 @@ qa_gate         = "jasmin"     # Jasmin reviews all automation scripts for secur
 handoff_to      = "jasmin"
 
 [task_types]
-accepts = ["automate", "webhook", "api integration", "script", "mcp", "telegram", "bot", "oauth", "scheduler", "notification", "github sync", "task scheduler", "deployment automation"]
+accepts = ["automate", "webhook", "api integration", "script", "mcp", "telegram", "bot", "oauth", "scheduler", "notification", "github sync", "task scheduler", "deployment automation", "lovable", "composio"]
 rejects = ["design", "copywrite", "database schema", "mobile native", "security audit"]
 
 [rate_limit]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "inbox/"
+report_path      = "agents/andy/inbox/"

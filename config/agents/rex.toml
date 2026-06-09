@@ -3,11 +3,11 @@
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = "vera"       # Vera QA on all UI deliverables
+qa_gate         = "vera"       # Vera QA on all Rex UI deliverables
 handoff_to      = "vera"
 
 [task_types]
-accepts = ["frontend", "react", "typescript", "component", "dashboard", "website", "html", "css", "javascript", "accessibility", "seo", "performance", "responsive"]
+accepts = ["frontend", "react", "typescript", "component", "dashboard", "website", "html", "css", "javascript", "accessibility", "seo", "performance", "base44", "lovable", "responsive"]
 rejects = ["security audit", "database schema", "mobile native", "devops"]
 
 [rate_limit]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "inbox/"
+report_path      = "agents/andy/inbox/"

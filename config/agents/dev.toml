@@ -7,7 +7,7 @@ qa_gate         = "vera"       # Vera validates CI config and deployment pipelin
 handoff_to      = "finn"       # Infra triage issues escalate to Finn
 
 [task_types]
-accepts = ["ci", "cd", "deploy", "github actions", "workflow", "docker", "env vars", "secrets", "infrastructure", "pipeline"]
+accepts = ["ci", "cd", "deploy", "railway", "vercel", "supabase branching", "github actions", "workflow", "docker", "eas build", "env vars", "secrets", "infrastructure", "pipeline"]
 rejects = ["design", "copywrite", "database schema", "mobile ui", "linkedin"]
 
 [rate_limit]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "inbox/"
+report_path      = "agents/andy/inbox/"

@@ -1,13 +1,13 @@
-# sage.toml — The Social Media & Brand Strategist
+# sage.toml — The LinkedIn Strategist
 
 [agent]
 max_task_size   = "M"
 preferred_model = "claude-code"
-qa_gate         = ""           # Posts reviewed by orchestrator before publishing
+qa_gate         = ""           # Posts reviewed by Andy before publishing
 handoff_to      = ""
 
 [task_types]
-accepts = ["linkedin", "post", "personal brand", "content", "thought leadership", "newsletter", "profile update", "social media"]
+accepts = ["linkedin", "post", "personal brand", "content", "thought leadership", "newsletter", "profile update", "cpо brand", "social media"]
 rejects = ["implement", "security audit", "database", "frontend", "mobile", "devops"]
 
 [rate_limit]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/posts/"
-report_path      = "inbox/"
+report_path      = "agents/andy/inbox/"

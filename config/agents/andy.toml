@@ -3,7 +3,7 @@
 [agent]
 max_task_size   = "XL"
 preferred_model = "claude-code"
-qa_gate         = ""           # Orchestrator is the final arbiter; no external QA gate
+qa_gate         = ""           # Andy is the final arbiter; no external QA gate
 handoff_to      = ""
 
 [task_types]
