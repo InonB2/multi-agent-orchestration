@@ -19,10 +19,13 @@ Files written:
     tasks/queue/resume_queue.json              — array of pending resume entries
 """
 
+from __future__ import annotations
+
 import json
+import os
 import re
 import sys
-import os
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +34,32 @@ SNAPSHOTS_DIR = ROOT / "tasks" / "snapshots"
 QUEUE_DIR     = ROOT / "tasks" / "queue"
 QUEUE_FILE    = QUEUE_DIR / "resume_queue.json"
 TASKS_FILE    = ROOT / "tasks" / "active_tasks.json"
+
+
+# ---------------------------------------------------------------------------
+# File-lock helpers (cross-platform sidecar-file pattern)
+# Used to guard concurrent writes to the resume queue.
+# ---------------------------------------------------------------------------
+
+def _acquire_lock(lock_path: Path, timeout: int = 10) -> bool:
+    """Try to create *lock_path* exclusively. Returns True on success, False on timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            return True
+        except FileExistsError:
+            time.sleep(0.05)
+    return False
+
+
+def _release_lock(lock_path: Path) -> None:
+    """Delete the sidecar lock file, ignoring missing-file errors."""
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -78,14 +107,21 @@ def _read_queue() -> list:
 
 
 def _write_queue(entries: list):
+    """Atomically write the resume queue, protected by a sidecar lock file."""
     _ensure_dirs()
-    # MAJOR-1: atomic write — prevents corruption on interrupted write
-    tmp = QUEUE_FILE.with_suffix('.tmp')
-    tmp.write_text(
-        json.dumps(entries, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    os.replace(tmp, QUEUE_FILE)
+    lock_path = Path(str(QUEUE_FILE) + ".lock")
+    if not _acquire_lock(lock_path):
+        print("[ERROR] Could not acquire lock on queue file", file=sys.stderr)
+        sys.exit(1)
+    try:
+        tmp = QUEUE_FILE.with_suffix('.tmp')
+        tmp.write_text(
+            json.dumps(entries, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        os.replace(tmp, QUEUE_FILE)
+    finally:
+        _release_lock(lock_path)
 
 
 def _lookup_task(task_id: str) -> dict:
@@ -105,6 +141,15 @@ def _current_model(task: dict) -> str:
     return task.get("preferred_provider", task.get("assigned_to", "unknown"))
 
 
+# Sentence-level signal words that indicate acceptance criteria.
+# Only sentences STARTING with these words are treated as criteria to avoid
+# false positives from words like "bypass" (pass), "password" (pass), "surpass" (pass),
+# or version numbers broken by the period-split heuristic.
+_CRITERIA_SIGNAL_WORDS = (
+    "all ", "must ", "should ", "verify ", "test ", "check ", "pass ",
+)
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -112,10 +157,10 @@ def _current_model(task: dict) -> str:
 def cmd_save(args):
     """Save a checkpoint for a task."""
     # Parse flags
-    task_id       = _get_flag(args, "--task")
-    done          = _get_flag(args, "--done", required=False) or ""
-    remaining     = _get_flag(args, "--remaining", required=False) or ""
-    next_step     = _get_flag(args, "--next", required=False) or ""
+    task_id        = _get_flag(args, "--task")
+    done           = _get_flag(args, "--done", required=False) or ""
+    remaining      = _get_flag(args, "--remaining", required=False) or ""
+    next_step      = _get_flag(args, "--next", required=False) or ""
     interrupted_by = _get_flag(args, "--interrupted-by", required=False) or "manual"
     model_override = _get_flag(args, "--model", required=False)
 
@@ -129,17 +174,20 @@ def cmd_save(args):
     task = _lookup_task(task_id)
     model = model_override or _current_model(task)
 
-    # Build acceptance criteria from task spec if available
+    # Build acceptance criteria from task spec if available.
+    # Conservative heuristic: only select a sentence as criteria if it STARTS with
+    # a known signal word.  This avoids matching "bypass", "password", "surpass", etc.
     acceptance_criteria = ""
     if task:
         notes = task.get("notes", "") or ""
-        # Try to extract success criteria hints from notes
-        for line in notes.split("."):
-            if any(kw in line.lower() for kw in ["success", "criteria", "done when", "pass"]):
-                acceptance_criteria = line.strip()
+        for sentence in notes.split("."):
+            stripped = sentence.strip()
+            lower_stripped = stripped.lower()
+            if any(lower_stripped.startswith(signal) for signal in _CRITERIA_SIGNAL_WORDS):
+                acceptance_criteria = stripped
                 break
-        if not acceptance_criteria:
-            acceptance_criteria = task.get("title", "")
+        # If no confident match found, leave acceptance_criteria as empty string
+        # rather than falling back to a potentially noisy title.
 
     checkpoint = {
         "task_id": task_id,
@@ -191,7 +239,15 @@ def cmd_read(args):
         print("[WARN] No checkpoint found for task '{}'".format(task_id))
         sys.exit(0)
 
-    data = json.loads(snap_path.read_text(encoding="utf-8"))
+    # EDGE-3: guard against corrupt checkpoint files instead of crashing
+    try:
+        data = json.loads(snap_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(
+            "[ERROR] Checkpoint file is corrupt for task '{}': {}".format(task_id, exc),
+            file=sys.stderr,
+        )
+        sys.exit(1)
     print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
@@ -238,19 +294,22 @@ def cmd_mark_resumed(args):
 
 
 # ---------------------------------------------------------------------------
-# Flag parser
+# Flag parser  (BUG-1 fix: removed the elif branch that allowed --flag as value)
 # ---------------------------------------------------------------------------
 
 def _get_flag(args: list, flag: str, required: bool = True) -> str:
-    """Return the value following `flag` in args list."""
+    """Return the value following *flag* in args list.
+
+    Only returns the next token if it does NOT start with '--', preventing a
+    flag name from being silently accepted as a value (e.g. --task --done).
+    If no valid value is found and required=True, exits with a clear error.
+    """
     if flag in args:
         idx = args.index(flag)
         if idx + 1 < len(args) and not args[idx + 1].startswith("--"):
             return args[idx + 1]
-        elif idx + 1 < len(args):
-            return args[idx + 1]
     if required:
-        print("[ERROR] {} is required".format(flag), file=sys.stderr)
+        print("[ERROR] Flag {} requires a value".format(flag), file=sys.stderr)
         sys.exit(1)
     return ""
 

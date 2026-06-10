@@ -5,6 +5,10 @@ coordinator.py — Task lifecycle manager for multi-model AI agents.
 Manages claim, track, checkpoint, and complete for tasks in active_tasks.json.
 Integrates with task_tracker.py and checkpoint.py rather than duplicating logic.
 
+Kanban flow: Backlog -> In Progress -> Blocked -> Tested -> Done
+  mark-tested sets status="tested" (QA-signed-off, NOT yet final).
+  mark-done   sets status="done"   (final terminal state, after QA approval).
+
 Commands:
     python scripts/coordinator.py claim --task TASK_ID --model MODEL_NAME
 
@@ -16,8 +20,10 @@ Commands:
         --remaining "what's left" \\
         --next "exact next step"
 
-    python scripts/coordinator.py complete --task TASK_ID \\
+    python scripts/coordinator.py mark-tested --task TASK_ID \\
         --result-path path/to/output.md
+
+    python scripts/coordinator.py mark-done --task TASK_ID
 
     python scripts/coordinator.py status --task TASK_ID
 
@@ -26,11 +32,15 @@ Commands:
 Models: claude-code, codex, antigravity
 """
 
+# QA-4: Python 3.8 compatibility — enables 'dict | None' annotation
+from __future__ import annotations
+
 import json
-import re
-import sys
 import os
+import re
 import subprocess
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -40,18 +50,52 @@ CHECKPOINT_PY = Path(__file__).resolve().parent / "checkpoint.py"
 
 
 # ---------------------------------------------------------------------------
+# File-lock helpers (cross-platform sidecar-file pattern)  [REL-2]
+# All scripts that read-modify-write active_tasks.json use the same lock path.
+# ---------------------------------------------------------------------------
+
+def _acquire_lock(lock_path: Path, timeout: int = 10) -> bool:
+    """Try to create *lock_path* exclusively. Returns True on success, False on timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            return True
+        except FileExistsError:
+            time.sleep(0.05)
+    return False
+
+
+def _release_lock(lock_path: Path) -> None:
+    """Delete the sidecar lock file, ignoring missing-file errors."""
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Active tasks I/O
 # ---------------------------------------------------------------------------
 
 def _load_tasks() -> dict:
     try:
-        return json.loads(TASKS_FILE.read_text(encoding="utf-8"))
+        data = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
     except FileNotFoundError:
         print("[ERROR] tasks/active_tasks.json not found: {}".format(TASKS_FILE), file=sys.stderr)
         sys.exit(1)
     except json.JSONDecodeError as exc:
         print("[ERROR] JSON parse error: {}".format(exc), file=sys.stderr)
         sys.exit(1)
+
+    # QA-5: Normalise legacy "in-progress" to canonical "in_progress" for backward compat.
+    # The canonical status written by all current commands is "in_progress".
+    for task in data.get("tasks", []):
+        if task.get("status") == "in-progress":
+            task["status"] = "in_progress"
+
+    return data
 
 
 def _save_tasks(data: dict):
@@ -64,7 +108,7 @@ def _save_tasks(data: dict):
     os.replace(tmp, TASKS_FILE)
 
 
-def _find_task(data: dict, task_id: str) -> dict:
+def _find_task(data: dict, task_id: str) -> dict | None:
     """Return mutable reference to the task dict, or None."""
     for t in data.get("tasks", []):
         if t.get("task_id") == task_id:
@@ -97,15 +141,28 @@ def _append_log_entry(task: dict, entry: str):
 
 
 # ---------------------------------------------------------------------------
-# External script caller
+# External script caller  [REL-3]
 # ---------------------------------------------------------------------------
 
-def _run_checkpoint(extra_args: list) -> int:
-    """Call checkpoint.py with the given args. Returns returncode."""
+def _run_checkpoint(extra_args: list, task_id: str = "", phase: str = "") -> int:
+    """Call checkpoint.py with the given args.
+
+    Uses capture_output=True so failures produce coordinator-context messages
+    rather than raw subprocess noise with no surrounding context.
+    Returns the subprocess returncode.
+    """
     result = subprocess.run(
         [sys.executable, str(CHECKPOINT_PY)] + extra_args,
-        capture_output=False,
+        capture_output=True,
     )
+    if result.returncode != 0:
+        label = " (task: {}, phase: {})".format(task_id, phase) if task_id else ""
+        print(
+            "[ERROR] checkpoint.py failed{}.".format(label),
+            file=sys.stderr,
+        )
+        if result.stderr:
+            print(result.stderr.decode(errors="replace"), file=sys.stderr)
     return result.returncode
 
 
@@ -125,19 +182,28 @@ def cmd_claim(args):
         sys.exit(1)
     _validate_task_id(task_id)  # MAJOR-3
 
-    data = _load_tasks()
-    task = _find_task(data, task_id)
-    if task is None:
-        print("[ERROR] Task '{}' not found in active_tasks.json".format(task_id), file=sys.stderr)
+    # REL-2: acquire lock before read-modify-write cycle
+    lock_path = Path(str(TASKS_FILE) + ".lock")
+    if not _acquire_lock(lock_path):
+        print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
         sys.exit(1)
+    try:
+        data = _load_tasks()
+        task = _find_task(data, task_id)
+        if task is None:
+            print("[ERROR] Task '{}' not found in active_tasks.json".format(task_id), file=sys.stderr)
+            sys.exit(1)
 
-    task["status"] = "in_progress"
-    task["preferred_provider"] = model
-    task["phase"] = "claimed"
-    task["claimed_at"] = _timestamp()
-    _append_log_entry(task, "CLAIMED by {}".format(model))
+        task["status"] = "in_progress"
+        task["preferred_provider"] = model
+        task["phase"] = "claimed"
+        task["claimed_at"] = _timestamp()
+        _append_log_entry(task, "CLAIMED by {}".format(model))
 
-    _save_tasks(data)
+        _save_tasks(data)
+    finally:
+        _release_lock(lock_path)
+
     print("[OK] Task '{}' claimed by {} (status=in_progress, phase=claimed)".format(task_id, model))
 
 
@@ -154,19 +220,28 @@ def cmd_update(args):
         sys.exit(1)
     _validate_task_id(task_id)  # MAJOR-3
 
-    data = _load_tasks()
-    task = _find_task(data, task_id)
-    if task is None:
-        print("[ERROR] Task '{}' not found".format(task_id), file=sys.stderr)
+    # REL-2: acquire lock before read-modify-write cycle
+    lock_path = Path(str(TASKS_FILE) + ".lock")
+    if not _acquire_lock(lock_path):
+        print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
         sys.exit(1)
+    try:
+        data = _load_tasks()
+        task = _find_task(data, task_id)
+        if task is None:
+            print("[ERROR] Task '{}' not found".format(task_id), file=sys.stderr)
+            sys.exit(1)
 
-    task["phase"] = phase
-    log_line = "PHASE -> {}".format(phase)
-    if note:
-        log_line += " | {}".format(note)
-    _append_log_entry(task, log_line)
+        task["phase"] = phase
+        log_line = "PHASE -> {}".format(phase)
+        if note:
+            log_line += " | {}".format(note)
+        _append_log_entry(task, log_line)
 
-    _save_tasks(data)
+        _save_tasks(data)
+    finally:
+        _release_lock(lock_path)
+
     print("[OK] Task '{}' phase updated to '{}'".format(task_id, phase))
     if note:
         print("     Note: {}".format(note))
@@ -197,22 +272,32 @@ def cmd_checkpoint(args):
     if model:
         checkpoint_args += ["--model", model]
 
-    rc = _run_checkpoint(checkpoint_args)
+    rc = _run_checkpoint(checkpoint_args, task_id=task_id, phase="checkpoint")
     if rc == 0:
-        # Also update phase in tasks file
-        data = _load_tasks()
-        task = _find_task(data, task_id)
-        if task:
-            task["phase"] = "checkpointed"
-            _append_log_entry(task, "CHECKPOINTED interrupted_by={}".format(interrupted_by))
-            _save_tasks(data)
+        # REL-2: acquire lock before read-modify-write cycle
+        lock_path = Path(str(TASKS_FILE) + ".lock")
+        if not _acquire_lock(lock_path):
+            print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
+            sys.exit(1)
+        try:
+            data = _load_tasks()
+            task = _find_task(data, task_id)
+            if task:
+                task["phase"] = "checkpointed"
+                _append_log_entry(task, "CHECKPOINTED interrupted_by={}".format(interrupted_by))
+                _save_tasks(data)
+        finally:
+            _release_lock(lock_path)
     else:
         sys.exit(rc)
 
 
-def cmd_complete(args):
+def cmd_mark_tested(args):
     """
-    Mark task as tested, phase=done, write result path.
+    Mark task as tested (QA-signed-off), phase=done.
+
+    Kanban note: "tested" means QA has signed off — it is NOT the final state.
+    Use mark-done after QA approval to set the terminal status="done".
     """
     task_id     = _get_flag(args, "--task")
     result_path = _get_flag(args, "--result-path", required=False) or ""
@@ -222,33 +307,82 @@ def cmd_complete(args):
         sys.exit(1)
     _validate_task_id(task_id)  # MAJOR-3
 
-    data = _load_tasks()
-    task = _find_task(data, task_id)
-    if task is None:
-        print("[ERROR] Task '{}' not found".format(task_id), file=sys.stderr)
+    # REL-2: acquire lock before read-modify-write cycle
+    lock_path = Path(str(TASKS_FILE) + ".lock")
+    if not _acquire_lock(lock_path):
+        print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
         sys.exit(1)
+    try:
+        data = _load_tasks()
+        task = _find_task(data, task_id)
+        if task is None:
+            print("[ERROR] Task '{}' not found".format(task_id), file=sys.stderr)
+            sys.exit(1)
 
-    task["status"] = "tested"
-    task["phase"] = "done"
-    task["completed_at"] = _timestamp()
+        task["status"] = "tested"
+        task["phase"] = "done"
+        task["completed_at"] = _timestamp()
 
-    if result_path:
-        notes = task.get("notes", "") or ""
-        result_note = "Result: {}".format(result_path)
-        task["notes"] = (notes + "\n" + result_note).strip() if notes else result_note
+        if result_path:
+            notes = task.get("notes", "") or ""
+            result_note = "Result: {}".format(result_path)
+            task["notes"] = (notes + "\n" + result_note).strip() if notes else result_note
 
-    _append_log_entry(task, "COMPLETE result={}".format(result_path or "(no path)"))
+        _append_log_entry(task, "MARK-TESTED result={}".format(result_path or "(no path)"))
 
-    _save_tasks(data)
-    print("[OK] Task '{}' marked complete (status=tested, phase=done)".format(task_id))
+        _save_tasks(data)
+    finally:
+        _release_lock(lock_path)
+
+    print("[OK] Task '{}' marked tested (status=tested, phase=done)".format(task_id))
     if result_path:
         print("     Result path: {}".format(result_path))
 
-    # Remove from resume queue if it was checkpointed
+    # Remove from resume queue if it was checkpointed.  EDGE-6: log failure instead of silencing.
     try:
-        rc = _run_checkpoint(["mark-resumed", "--task", task_id])
-    except Exception:
-        pass  # Non-fatal — task may not have been in queue
+        _run_checkpoint(["mark-resumed", "--task", task_id], task_id=task_id, phase="mark-tested")
+    except Exception as exc:
+        print(
+            "[WARN] Could not clear checkpoint for task '{}': {}".format(task_id, exc),
+            file=sys.stderr,
+        )
+
+
+def cmd_mark_done(args):
+    """
+    Mark task as done — the final terminal state after QA approval.
+
+    Kanban flow: Tested -> Done.
+    Only call this AFTER a QA agent has signed off (i.e., after mark-tested).
+    """
+    task_id = _get_flag(args, "--task")
+
+    if not task_id:
+        print("[ERROR] --task is required", file=sys.stderr)
+        sys.exit(1)
+    _validate_task_id(task_id)
+
+    # REL-2: acquire lock before read-modify-write cycle
+    lock_path = Path(str(TASKS_FILE) + ".lock")
+    if not _acquire_lock(lock_path):
+        print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
+        sys.exit(1)
+    try:
+        data = _load_tasks()
+        task = _find_task(data, task_id)
+        if task is None:
+            print("[ERROR] Task '{}' not found".format(task_id), file=sys.stderr)
+            sys.exit(1)
+
+        task["status"] = "done"
+        task["closed_at"] = _timestamp()
+        _append_log_entry(task, "MARK-DONE (final terminal state)")
+
+        _save_tasks(data)
+    finally:
+        _release_lock(lock_path)
+
+    print("[OK] Task '{}' marked done (status=done — final terminal state)".format(task_id))
 
 
 def cmd_status(args):
@@ -302,10 +436,12 @@ def cmd_list_mine(args):
         sys.exit(1)
 
     data = _load_tasks()
+    # QA-5: Only check canonical "in_progress" — "in-progress" is normalised by _load_tasks().
+    # The canonical status written by all current commands is "in_progress".
     mine = [
         t for t in data.get("tasks", [])
         if t.get("preferred_provider") == model
-        and t.get("status") in ("in_progress", "in-progress")
+        and t.get("status") == "in_progress"
     ]
 
     if not mine:
@@ -324,19 +460,21 @@ def cmd_list_mine(args):
 
 
 # ---------------------------------------------------------------------------
-# Flag parser
+# Flag parser  (BUG-1 fix applied: same guard as checkpoint.py)
 # ---------------------------------------------------------------------------
 
 def _get_flag(args: list, flag: str, required: bool = True) -> str:
-    """Return the value following `flag` in args list."""
+    """Return the value following *flag* in args list.
+
+    Only returns the next token if it does NOT start with '--', preventing a
+    flag name from being silently accepted as a value.
+    """
     if flag in args:
         idx = args.index(flag)
-        if idx + 1 < len(args):
-            val = args[idx + 1]
-            # Allow multi-word values up to next --flag
-            return val
+        if idx + 1 < len(args) and not args[idx + 1].startswith("--"):
+            return args[idx + 1]
     if required:
-        print("[ERROR] {} is required".format(flag), file=sys.stderr)
+        print("[ERROR] Flag {} requires a value".format(flag), file=sys.stderr)
         sys.exit(1)
     return ""
 
@@ -349,7 +487,8 @@ COMMANDS = {
     "claim":         cmd_claim,
     "update":        cmd_update,
     "checkpoint":    cmd_checkpoint,
-    "complete":      cmd_complete,
+    "mark-tested":   cmd_mark_tested,
+    "mark-done":     cmd_mark_done,
     "status":        cmd_status,
     "list-mine":     cmd_list_mine,
 }

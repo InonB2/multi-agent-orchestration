@@ -20,6 +20,8 @@ type            = "api"
 api_base_url    = "https://api.anthropic.com/v1"
 api_key_env_var = "ANTHROPIC_API_KEY"
 model_id        = "claude-sonnet-4-6"
+# max_tokens = 4096        # Maximum tokens in the response (default: 4096 if not set)
+# timeout_seconds = 60     # HTTP request timeout in seconds (default: 60)
 
 # Anthropic uses a different auth scheme from OpenAI.
 # llm_provider.py detects api.anthropic.com automatically and sends:

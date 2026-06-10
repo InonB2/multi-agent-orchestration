@@ -17,113 +17,64 @@ Usage:
   python scripts/llm_provider.py list
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
-import re
+import socket
 import subprocess
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# TOML import — stdlib (Python 3.11+) with fallback to tomli
-# ---------------------------------------------------------------------------
-try:
-    import tomllib
-except ImportError:
-    try:
-        import tomli as tomllib  # type: ignore[no-redef]
-    except ImportError:
-        print(
-            "[ERROR] TOML library not available.\n"
-            "  Python 3.11+ ships 'tomllib' in the stdlib.\n"
-            "  For older Python: pip install tomli",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+# QA-1: Import shared utilities from config_loader instead of duplicating them
+import config_loader as cl
 
 ROOT       = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config" / "agents"
 DEFAULTS   = CONFIG_DIR / "_defaults.toml"
-
-# Agent name must be alphanumeric + hyphens + underscores only (path traversal guard)
-_AGENT_NAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _validate_agent_name(name: str) -> None:
-    """Reject agent names that contain path-traversal or invalid characters."""
-    if not _AGENT_NAME_RE.match(name):
-        print(
-            "[ERROR] Invalid agent name '{}'. "
-            "Only alphanumeric characters, hyphens, and underscores are allowed.".format(name),
-            file=sys.stderr,
-        )
+def _agent_toml_path(agent_name: str) -> Path:
+    """Resolve the TOML path for *agent_name*, rejecting path-traversal attempts.
+
+    Raises SystemExit(1) on invalid names (used by CLI commands).
+    """
+    try:
+        return cl.safe_agent_path(CONFIG_DIR, agent_name)
+    except cl.ConfigLoadError as exc:
+        print(str(exc), file=sys.stderr)
         sys.exit(1)
 
 
 def _load_toml(path: Path) -> dict:
-    """Load a TOML file. Returns {} if the file does not exist."""
-    if not path.exists():
-        return {}
-    try:
-        return tomllib.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        print("[ERROR] Failed to parse {}: {}".format(path, exc), file=sys.stderr)
-        sys.exit(1)
+    """Load a TOML file. Returns {} if the file does not exist.
 
-
-def _deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge *override* into *base*. Returns a new dict."""
-    result = dict(base)
-    for key, val in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
-            result[key] = _deep_merge(result[key], val)
-        else:
-            result[key] = val
-    return result
-
-
-def _agent_toml_path(agent_name: str) -> Path:
-    """Resolve the TOML path for *agent_name*, rejecting path-traversal attempts."""
-    _validate_agent_name(agent_name)
-    candidate = (CONFIG_DIR / "{}.toml".format(agent_name.lower())).resolve()
-    try:
-        candidate.relative_to(CONFIG_DIR.resolve())
-    except ValueError:
-        print("[ERROR] Invalid agent name — path traversal detected.", file=sys.stderr)
-        sys.exit(1)
-    return candidate
+    Propagates ConfigLoadError — callers decide whether to sys.exit or print ERROR.
+    """
+    return cl.load_toml(path)
 
 
 def _load_agent_config(agent_name: str) -> dict:
-    """Return the fully-merged config for *agent_name* (defaults + agent overrides)."""
+    """Return the fully-merged config for *agent_name* (defaults + agent overrides).
+
+    Propagates ConfigLoadError so cmd_list can print an ERROR row without crashing.
+    """
     defaults   = _load_toml(DEFAULTS)
-    agent_file = _agent_toml_path(agent_name)
+    agent_file = cl.safe_agent_path(CONFIG_DIR, agent_name)
     overrides  = _load_toml(agent_file)
-    return _deep_merge(defaults, overrides)
-
-
-def _get_nested(config: dict, dotkey: str):
-    """Resolve a dot-notation key like 'provider.type' from a nested dict."""
-    cur = config
-    for part in dotkey.split("."):
-        if not isinstance(cur, dict) or part not in cur:
-            return None
-        cur = cur[part]
-    return cur
+    return cl.deep_merge(defaults, overrides)
 
 
 def _list_agent_names() -> list:
     """Return sorted list of agent names (TOML stem, excluding _defaults)."""
-    if not CONFIG_DIR.exists():
-        return []
-    return sorted(p.stem for p in CONFIG_DIR.glob("*.toml") if p.stem != "_defaults")
+    return cl.list_agent_names(CONFIG_DIR)
 
 
 def _is_anthropic(base_url: str) -> bool:
@@ -138,9 +89,8 @@ def _is_anthropic(base_url: str) -> bool:
 def cmd_info(args) -> None:
     """Print provider configuration for a single agent."""
     agent_name = args.agent
-    _validate_agent_name(agent_name)
+    agent_file = _agent_toml_path(agent_name)  # exits on invalid name
 
-    agent_file = _agent_toml_path(agent_name)
     if not agent_file.exists():
         print(
             "[ERROR] No config file for agent '{}' ({}).".format(agent_name, agent_file),
@@ -148,7 +98,12 @@ def cmd_info(args) -> None:
         )
         sys.exit(1)
 
-    config   = _load_agent_config(agent_name)
+    try:
+        config = _load_agent_config(agent_name)
+    except cl.ConfigLoadError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+
     provider = config.get("provider", {})
     ptype    = provider.get("type", "cli")
 
@@ -196,9 +151,8 @@ def cmd_run(args) -> None:
     prompt     = args.prompt
     dry_run    = args.dry_run
 
-    _validate_agent_name(agent_name)
+    agent_file = _agent_toml_path(agent_name)  # exits on invalid name
 
-    agent_file = _agent_toml_path(agent_name)
     if not agent_file.exists():
         print(
             "[ERROR] No config file for agent '{}' ({}).".format(agent_name, agent_file),
@@ -206,7 +160,12 @@ def cmd_run(args) -> None:
         )
         sys.exit(1)
 
-    config   = _load_agent_config(agent_name)
+    try:
+        config = _load_agent_config(agent_name)
+    except cl.ConfigLoadError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+
     provider = config.get("provider", {})
     ptype    = provider.get("type", "cli")
 
@@ -258,18 +217,25 @@ def cmd_run(args) -> None:
 
         is_anth = _is_anthropic(api_base_url)
 
+        # QA-6: read max_tokens from TOML [provider] section, default 4096
+        max_tokens = int(provider.get("max_tokens", 4096))
+
+        # REL-1: read per-provider timeout from TOML, default 60s
+        timeout_seconds = int(provider.get("timeout_seconds", 60))
+
         if is_anth:
             endpoint = "{}/messages".format(api_base_url.rstrip("/"))
             payload  = {
                 "model":      model_id,
-                "max_tokens": 1024,
+                "max_tokens": max_tokens,
                 "messages":   [{"role": "user", "content": prompt}],
             }
         else:
             endpoint = "{}/chat/completions".format(api_base_url.rstrip("/"))
             payload  = {
-                "model":    model_id,
-                "messages": [{"role": "user", "content": prompt}],
+                "model":      model_id,
+                "max_tokens": max_tokens,
+                "messages":   [{"role": "user", "content": prompt}],
             }
 
         # --dry-run: print request details without sending (no API key needed)
@@ -298,8 +264,8 @@ def cmd_run(args) -> None:
 
         if is_anth:
             headers = {
-                "Content-Type":    "application/json",
-                "x-api-key":       api_key,
+                "Content-Type":      "application/json",
+                "x-api-key":         api_key,
                 "anthropic-version": "2023-06-01",
             }
         else:
@@ -311,7 +277,8 @@ def cmd_run(args) -> None:
         body = json.dumps(payload).encode("utf-8")
         req  = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req) as resp:
+            # REL-1: explicit timeout prevents indefinite hangs on unresponsive APIs
+            with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 if is_anth:
                     # Anthropic Messages API: data["content"][0]["text"]
@@ -327,6 +294,13 @@ def cmd_run(args) -> None:
                         print(choices[0].get("message", {}).get("content", ""))
                     else:
                         print(json.dumps(data, indent=2))
+        except socket.timeout:
+            # REL-1: catch socket-level timeout raised by urlopen
+            print(
+                "[ERROR] Request to {} timed out after {}s.".format(endpoint, timeout_seconds),
+                file=sys.stderr,
+            )
+            sys.exit(1)
         except urllib.error.HTTPError as exc:
             body_err = exc.read().decode("utf-8", errors="replace")
             print(
@@ -350,7 +324,11 @@ def cmd_run(args) -> None:
 
 
 def cmd_list(args) -> None:
-    """Print all agents and their provider types in a table."""
+    """Print all agents and their provider types in a table.
+
+    REL-5: catches ConfigLoadError per agent (instead of SystemExit) so a single
+    broken TOML file never aborts the entire listing.
+    """
     agents = _list_agent_names()
     if not agents:
         print("No agent config files found in {}.".format(CONFIG_DIR))
@@ -376,7 +354,8 @@ def cmd_list(args) -> None:
                 detail = "unknown provider type"
 
             print("{:<25} {:<8} {}".format(name, ptype, detail))
-        except SystemExit:
+        except cl.ConfigLoadError:
+            # REL-5: ConfigLoadError is a domain exception — safe to catch per-agent
             print("{:<25} {:<8} {}".format(name, "ERROR", "failed to load config"))
 
 

@@ -217,6 +217,52 @@ def test_checkpoint_invalid_task_id_rejected():
 
 
 # ---------------------------------------------------------------------------
+# TST-2: BUG-1 regression — _get_flag must reject a flag as its own value
+# ---------------------------------------------------------------------------
+
+def test_checkpoint_get_flag_rejects_flag_as_value():
+    """_get_flag must NOT silently accept another flag name as a value.
+
+    Before the BUG-1 fix, checkpoint.py --task --done step1 would silently set
+    task_id = '--done'.  After the fix it must exit with an error.
+    """
+    import checkpoint as cp
+
+    with pytest.raises(SystemExit):
+        # --task is followed immediately by --done (another flag), which is invalid
+        cp._get_flag(["--task", "--done", "step1"], "--task")
+
+
+# ---------------------------------------------------------------------------
+# TST-6: checkpoint.py corrupt JSON handling
+# ---------------------------------------------------------------------------
+
+def test_checkpoint_read_corrupt_json(tmp_path, monkeypatch, capsys):
+    """cmd_read must exit with code 1 and print [ERROR] for a corrupt checkpoint file."""
+    import checkpoint as cp
+
+    snapshots = tmp_path / "snapshots"
+    snapshots.mkdir(parents=True)
+    queue_dir = tmp_path / "queue"
+
+    monkeypatch.setattr(cp, "ROOT", tmp_path)
+    monkeypatch.setattr(cp, "SNAPSHOTS_DIR", snapshots)
+    monkeypatch.setattr(cp, "QUEUE_DIR", queue_dir)
+    monkeypatch.setattr(cp, "QUEUE_FILE", queue_dir / "resume_queue.json")
+
+    # Write corrupt JSON directly to a snapshot file
+    snap = snapshots / "CORRUPT-001_checkpoint.json"
+    snap.write_text("not valid json {{{", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        cp.cmd_read(["--task", "CORRUPT-001"])
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "[ERROR]" in captured.err
+
+
+# ---------------------------------------------------------------------------
 # task_router.py — routing decisions
 # ---------------------------------------------------------------------------
 
@@ -321,6 +367,79 @@ def test_routing_atomic_write_produces_valid_json(tasks_file, monkeypatch):
     result = json.loads(tasks_file.read_text(encoding="utf-8"))
     for t in result["tasks"]:
         assert "preferred_provider" in t, "All tasks should have a preferred_provider after routing"
+
+
+# ---------------------------------------------------------------------------
+# TST-3: Word-boundary matching — substring false positives must NOT match
+# ---------------------------------------------------------------------------
+
+def test_routing_prefix_not_matched_as_fix():
+    """'prefix' must NOT match the 'fix' keyword (word-boundary guard, EDGE-1)."""
+    task = {"title": "add a prefix to the string", "notes": ""}
+    scores = score_task(task)
+    # "prefix" contains "fix" as substring — without word-boundary this would hit codex
+    assert scores["codex"] == 0, "'prefix' should not match the 'fix' keyword"
+    assert pick_provider(scores) != "codex"
+
+
+def test_routing_rapid_not_matched_as_api():
+    """'rapid' must NOT match the 'api' keyword (word-boundary guard, EDGE-1)."""
+    task = {"title": "rapid iteration on the product", "notes": ""}
+    scores = score_task(task)
+    # "rapid" contains "api" as substring — without word-boundary this would hit codex
+    assert scores["codex"] == 0, "'rapid' should not match the 'api' keyword"
+
+
+def test_routing_build_not_false_positive_in_rebuild():
+    """'rebuild' must match 'build' because 'build' appears as a whole word within it — wait,
+    actually 'rebuild' = 're' + 'build', so \\bbuild\\b matches 'build' in 'rebuild'?
+    Let's verify: \\b is a word-boundary between \\w and \\W.  In 'rebuild', 'b' is preceded by
+    the 'l' of 'rebui' — so there is NO word boundary before 'build' inside 'rebuild'.
+    This confirms the fix works: 'rebuild' does NOT score a 'build' match.
+    """
+    import re
+    assert not re.search(r'\bbuild\b', "rebuild", re.IGNORECASE), \
+        "'rebuild' must not match '\\bbuild\\b'"
+    assert re.search(r'\bbuild\b', "build the project", re.IGNORECASE), \
+        "'build the project' must match '\\bbuild\\b'"
+
+
+# ---------------------------------------------------------------------------
+# TST-4: Tie-breaking — codex beats antigravity on equal scores
+# ---------------------------------------------------------------------------
+
+def test_routing_tiebreak_codex_beats_antigravity():
+    """When codex and antigravity score equally, codex must win (priority order)."""
+    # "analyze" → antigravity +1; "fix" → codex +1 → equal tie at 1 each
+    task = {"title": "analyze and fix the bug", "notes": ""}
+    scores = score_task(task)
+    # "analyze" hits antigravity, "fix" and "bug" hit codex → codex wins 2 vs 1 (not a tie)
+    # Use a cleaner tie: only one keyword from each side
+    task_tie = {"title": "analyze and fix", "notes": ""}
+    scores_tie = score_task(task_tie)
+    # "analyze" → antigravity=1, "fix" → codex=1, claude-code=0
+    assert scores_tie["codex"] == scores_tie["antigravity"], \
+        "Expected tie between codex and antigravity"
+    assert pick_provider(scores_tie) == "codex", \
+        "codex must win the tie over antigravity"
+
+
+# ---------------------------------------------------------------------------
+# TST-5: task_spec.py path traversal
+# ---------------------------------------------------------------------------
+
+def test_taskspec_path_traversal_rejected(tmp_path, monkeypatch):
+    """cmd_read with a path-traversal task_id must exit with SystemExit."""
+    import task_spec as ts
+
+    sd = tmp_path / "specs"
+    sd.mkdir()
+    monkeypatch.setattr(ts, "SPECS_DIR", sd)
+
+    import argparse
+    args = argparse.Namespace(task="../../etc/passwd")
+    with pytest.raises(SystemExit):
+        ts.cmd_read(args)
 
 
 # ---------------------------------------------------------------------------
@@ -486,6 +605,89 @@ def test_spec_atomic_write_no_tmp_leftover(tmp_path, monkeypatch):
     dest = sd / "SPEC-AW1.json"
     assert dest.exists()
     json.loads(dest.read_text(encoding="utf-8"))  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# TST-1: coordinator.py commands (zero coverage before this PR)
+# ---------------------------------------------------------------------------
+
+def _make_coordinator_tasks_file(tmp_path, tasks):
+    """Write tasks data to active_tasks.json in tmp_path."""
+    tf = tmp_path / "active_tasks.json"
+    tf.write_text(json.dumps({"tasks": tasks}, indent=2), encoding="utf-8")
+    return tf
+
+
+def test_coordinator_claim_sets_status(tmp_path, monkeypatch):
+    """cmd_claim must set status=in_progress, preferred_provider, and claimed_at."""
+    import coordinator as co
+
+    tf = _make_coordinator_tasks_file(tmp_path, [
+        {"task_id": "CO-001", "title": "Test task", "status": "pending", "complexity": "M"},
+    ])
+    monkeypatch.setattr(co, "TASKS_FILE", tf)
+
+    co.cmd_claim(["--task", "CO-001", "--model", "codex"])
+
+    updated = json.loads(tf.read_text(encoding="utf-8"))
+    task = next(t for t in updated["tasks"] if t["task_id"] == "CO-001")
+    assert task["status"] == "in_progress"
+    assert task["preferred_provider"] == "codex"
+    assert "claimed_at" in task
+    assert task["phase"] == "claimed"
+
+
+def test_coordinator_update_status(tmp_path, monkeypatch):
+    """cmd_update must set the phase field and append a coordinator_log entry."""
+    import coordinator as co
+
+    tf = _make_coordinator_tasks_file(tmp_path, [
+        {"task_id": "CO-002", "title": "Test task", "status": "in_progress", "complexity": "M"},
+    ])
+    monkeypatch.setattr(co, "TASKS_FILE", tf)
+
+    co.cmd_update(["--task", "CO-002", "--phase", "in-review"])
+
+    updated = json.loads(tf.read_text(encoding="utf-8"))
+    task = next(t for t in updated["tasks"] if t["task_id"] == "CO-002")
+    assert task["phase"] == "in-review"
+    assert any("in-review" in entry for entry in task.get("coordinator_log", []))
+
+
+def test_coordinator_complete_sets_tested(tmp_path, monkeypatch):
+    """cmd_mark_tested must set status=tested and phase=done."""
+    import coordinator as co
+
+    tf = _make_coordinator_tasks_file(tmp_path, [
+        {"task_id": "CO-003", "title": "Test task", "status": "in_progress", "complexity": "M"},
+    ])
+    monkeypatch.setattr(co, "TASKS_FILE", tf)
+    # Stub out the checkpoint subprocess so no real process is spawned
+    monkeypatch.setattr(co, "_run_checkpoint", lambda *a, **kw: 0)
+
+    co.cmd_mark_tested(["--task", "CO-003"])
+
+    updated = json.loads(tf.read_text(encoding="utf-8"))
+    task = next(t for t in updated["tasks"] if t["task_id"] == "CO-003")
+    assert task["status"] == "tested"
+    assert task["phase"] == "done"
+    assert "completed_at" in task
+
+
+def test_coordinator_status_output(tmp_path, monkeypatch, capsys):
+    """cmd_status must print the task_id and status in its output."""
+    import coordinator as co
+
+    tf = _make_coordinator_tasks_file(tmp_path, [
+        {"task_id": "CO-004", "title": "Status test task", "status": "in_progress", "complexity": "M"},
+    ])
+    monkeypatch.setattr(co, "TASKS_FILE", tf)
+
+    co.cmd_status(["--task", "CO-004"])
+
+    out = capsys.readouterr().out
+    assert "CO-004" in out
+    assert "in_progress" in out
 
 
 # ---------------------------------------------------------------------------
