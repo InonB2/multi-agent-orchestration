@@ -16,8 +16,20 @@ import os
 import sys
 from pathlib import Path
 
+# ---------------------------------------------------------------------------
+# TOML import — stdlib (Python 3.11+) with fallback to tomli
+# ---------------------------------------------------------------------------
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except ImportError:
+        tomllib = None  # type: ignore[assignment]
+
 ROOT       = Path(__file__).resolve().parent.parent
 TASKS_FILE = ROOT / "tasks" / "active_tasks.json"
+_CONFIG_DIR = ROOT / "config" / "agents"
 
 ROUTING_RULES = {
     "codex": [
@@ -39,6 +51,35 @@ ROUTING_RULES = {
 }
 
 DEFAULT_PROVIDER = "claude-code"
+
+
+# ---------------------------------------------------------------------------
+# Provider-type lookup (for enriched routing output)
+# ---------------------------------------------------------------------------
+
+def _load_toml_safe(path: Path) -> dict:
+    """Load a TOML file; return {} on any error (never raises)."""
+    if tomllib is None or not path.exists():
+        return {}
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _get_provider_info(agent_name: str) -> tuple:
+    """Return (provider_type, model_id) for *agent_name*. Defaults to ('cli', None)."""
+    try:
+        defaults   = _load_toml_safe(_CONFIG_DIR / "_defaults.toml")
+        agent_cfg  = _load_toml_safe(_CONFIG_DIR / "{}.toml".format(agent_name.lower()))
+        # Simple merge: agent overrides defaults for provider section
+        merged_provider = dict(defaults.get("provider", {}))
+        merged_provider.update(agent_cfg.get("provider", {}))
+        ptype    = merged_provider.get("type", "cli")
+        model_id = merged_provider.get("model_id")
+        return ptype, model_id
+    except Exception:
+        return "cli", None
 
 
 def score_task(task: dict) -> dict:
@@ -107,10 +148,17 @@ def route_tasks(dry_run=False, task_id_filter=None):
         title   = task.get("title", "(no title)")
         score_summary = ", ".join("{}={}".format(p, s) for p, s in scores.items())
 
+        # Look up provider type for enriched output
+        ptype, model_id = _get_provider_info(provider)
+        if ptype == "api" and model_id:
+            provider_label = "[provider: api | model: {}]".format(model_id)
+        else:
+            provider_label = "[provider: {}]".format(ptype)
+
         # Strip non-ASCII characters to avoid cp1252 encoding errors on Windows console
         safe_title = title[:60].encode("ascii", errors="replace").decode("ascii")
-        print("  {}: '{}' -> {}  (scores: {})".format(
-            task_id, safe_title, provider, score_summary
+        print("  {}: '{}' -> {}  {}  (scores: {})".format(
+            task_id, safe_title, provider, provider_label, score_summary
         ))
 
         if not dry_run:
