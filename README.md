@@ -2,6 +2,11 @@
 
 > Route every task to the right AI model. Checkpoint mid-task state. Resume after rate limits.
 
+[![CI](https://github.com/InonB2/multi-agent-orchestration/actions/workflows/ci.yml/badge.svg)](https://github.com/InonB2/multi-agent-orchestration/actions/workflows/ci.yml)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-green.svg)](scripts/)
+
 ## The Problem
 
 Most teams use one AI model for everything. That's expensive, slow, and wrong in three ways:
@@ -15,6 +20,19 @@ Most teams use one AI model for everything. That's expensive, slow, and wrong in
 4. **No clear "done"** — Tasks need explicit success criteria, QA gates, and status tracking. Without this, "done" means "I think it works."
 
 This framework solves all four.
+
+## Requirements
+
+- Python 3.8+ (no external dependencies — stdlib only)
+- For API providers: set the relevant env var (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`)
+
+## Installation
+
+```bash
+git clone https://github.com/InonB2/multi-agent-orchestration.git
+cd multi-agent-orchestration
+# No pip install needed — pure Python stdlib
+```
 
 ## Architecture
 
@@ -74,28 +92,89 @@ python scripts/agent_config.py show --agent codex
 | `coordinator.py` | Task lifecycle: claim → update → checkpoint → complete |
 | `task_spec.py` | Enforces pre-task specs for M/L/XL tasks before execution |
 | `agent_config.py` | Loads per-agent TOML config with project-level deep-merge overrides |
+| `llm_provider.py` | LLM-agnostic provider abstraction — CLI tools or direct API endpoints |
 
 ## Task Schema
 
-Tasks live in `tasks/active_tasks.json`. Each task looks like this:
+Each task in `active_tasks.json` follows this structure:
 
 ```json
 {
   "task_id": "TASK-001",
-  "title": "Add POST /items route with Zod validation",
+  "title": "Implement user authentication module",
+  "assigned_to": "codex",
+  "status": "pending",
   "priority": "high",
-  "assigned_to": "coder-agent",
-  "tested_by": "qa-agent",
-  "status": "backlog",
-  "preferred_provider": "codex",
-  "complexity": "S",
-  "notes": ""
+  "complexity": "M",
+  "preferred_provider": null,
+  "notes": "Optional context for the agent"
 }
 ```
+
+| Field | Required | Values | Description |
+|-------|----------|--------|-------------|
+| `task_id` | Yes | `[A-Za-z0-9_-]+` | Unique identifier |
+| `title` | Yes | string | Plain-language task description — used by the router |
+| `assigned_to` | Yes | agent name | Which agent owns this task |
+| `status` | Yes | `pending`, `in_progress`, `done`, `blocked` | Current state |
+| `priority` | No | `high`, `medium`, `low` | Used for ordering |
+| `complexity` | No | `S`, `M`, `L`, `XL` | Used to decide if a spec is required |
+| `preferred_provider` | No | provider name or `null` | Set by the router; null means unrouted |
+| `notes` | No | string | Free-text context |
 
 Status flow: `backlog → in_progress → tested → done` (or `blocked` on rate limit).
 
 See `tasks/active_tasks.example.json` for a complete example.
+
+## LLM Provider Configuration
+
+Each agent can be configured to use either a **CLI tool** or a **direct API endpoint** — you are not locked into any specific AI product.
+
+### CLI mode (default)
+
+The default. The framework routes tasks to agents who execute them via CLI tools (Claude Code, Codex CLI, etc.).
+
+```toml
+# config/agents/my_agent.toml
+[provider]
+type = "cli"
+```
+
+### API mode — OpenAI-compatible
+
+For any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, Groq, Together AI, Ollama):
+
+```toml
+# config/agents/my_api_agent.toml
+[provider]
+type = "api"
+api_base_url = "https://api.openai.com/v1"  # or your custom endpoint
+api_key_env_var = "OPENAI_API_KEY"
+model_id = "gpt-4o"
+```
+
+### API mode — Anthropic
+
+```toml
+# config/agents/anthropic_agent.toml
+[provider]
+type = "api"
+api_base_url = "https://api.anthropic.com/v1"
+api_key_env_var = "ANTHROPIC_API_KEY"
+model_id = "claude-sonnet-4-6"
+```
+
+Auth format is auto-detected: `api.anthropic.com` → `x-api-key` header; all other endpoints → `Authorization: Bearer`.
+
+### Inspecting provider config
+
+```bash
+python scripts/llm_provider.py info --agent my_agent
+python scripts/llm_provider.py list  # show all agents + provider types
+python scripts/llm_provider.py run --agent my_agent --prompt "Hello" --dry-run
+```
+
+See `config/agents/openai_agent.toml` and `config/agents/anthropic_api.toml` for full examples.
 
 ## Routing Rules
 
@@ -123,23 +202,18 @@ When a model hits its limit mid-task:
 2. The task is queued in `tasks/queue/resume_queue.json`
 3. At the next session start, read the queue and re-dispatch
 
-## Why not LangGraph / CrewAI / AutoGen?
+## Why not LangGraph or CrewAI?
 
-Those are excellent frameworks — but they solve a different problem.
+| | LangGraph | CrewAI | This framework |
+|---|---|---|---|
+| Multi-model routing | ❌ Single model per graph | ❌ Multi-LLM but no dynamic routing | ✅ Keyword-heuristic routing across providers |
+| Rate-limit checkpointing | ❌ Failure recovery only | ❌ Not addressed | ✅ Quota-exhaustion treated as scheduling |
+| Pre-task spec gate | ❌ | ❌ Task descriptions, no validation | ✅ Enforced for M/L/XL tasks |
+| External dependencies | pip install langgraph + LangSmith | pip install crewai + extras | ✅ Python stdlib only |
+| CLI-native | ❌ | ❌ | ✅ Built for Claude Code, Codex CLI, etc. |
+| API-native | ✅ Any LLM | ✅ Any LLM | ✅ OpenAI-compatible + Anthropic |
 
-| Framework | Strength | Gap |
-|-----------|----------|-----|
-| LangGraph | Stateful graph workflows | No multi-model routing by capability |
-| CrewAI | Role-based agent teams | No rate-limit checkpoint-resume |
-| AutoGen | Conversational multi-agent | Assumes one LLM provider |
-| Semantic Kernel | Enterprise .NET/Python | Complex setup, no routing table |
-
-This framework is for the developer who **runs multiple AI providers daily** (Claude Code + Codex CLI + Gemini) and needs:
-1. Tasks routed to the right model by actual benchmark strength
-2. Work saved and resumed automatically when a model hits its rate limit
-3. Zero new infrastructure — just Python scripts and JSON files
-
-If you need graph-based workflows or conversational agents, use LangGraph or CrewAI. If you need multi-model routing with rate-limit resilience, this is for you.
+This framework is not competing with LangGraph for enterprise workflow orchestration. It targets the developer who runs Claude Code + Codex CLI daily and has hit rate limits mid-task. For that use case, nothing in this table solves the problem as directly.
 
 ## Agent Config
 
