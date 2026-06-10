@@ -1,0 +1,42 @@
+# openai_agent.toml — Generic OpenAI-compatible API agent
+#
+# Works with OpenAI, Azure OpenAI, Groq, Together AI, Ollama, or any
+# OpenAI-compatible /v1/chat/completions endpoint.
+# Copy and rename this file for your own API-based agents.
+#
+# Set your API key:  export OPENAI_API_KEY=sk-...
+# Run a task:        python scripts/llm_provider.py run --agent openai_agent --prompt "..."
+
+[agent]
+name            = "openai_agent"
+description     = "Generic OpenAI-compatible API agent — routes tasks to any OpenAI-compatible LLM endpoint"
+max_task_size   = "L"
+preferred_model = "gpt-4o"
+qa_gate         = ""
+handoff_to      = ""
+
+[provider]
+type            = "api"
+api_base_url    = "https://api.openai.com/v1"
+api_key_env_var = "OPENAI_API_KEY"
+model_id        = "gpt-4o"
+
+# To use a different OpenAI-compatible endpoint, override api_base_url, e.g.:
+#   Groq:       api_base_url = "https://api.groq.com/openai/v1"
+#   Together:   api_base_url = "https://api.together.xyz/v1"
+#   Ollama:     api_base_url = "http://localhost:11434/v1"
+
+[task_routing]
+accepts = ["general", "analysis", "drafting", "summarization", "classification"]
+weight  = 1.0
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "agents/andy/inbox/"
+
+[limits]
+# Add rate-limit / quota config here if needed

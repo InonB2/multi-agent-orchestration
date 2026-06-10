@@ -19,3 +19,13 @@ resume_queue  = true           # add to resume queue on rate limit hit
 [output]
 deliverable_path = "owner_inbox/"
 report_path      = "agents/andy/inbox/"
+
+[provider]
+# "cli" = invoke via a local CLI tool (Claude Code, Codex CLI, etc.)
+# "api" = call an OpenAI-compatible or Anthropic REST endpoint directly
+type = "cli"
+
+# For type = "api": set these in your environment or per-agent override
+# api_base_url = "https://api.openai.com/v1"   # any OpenAI-compatible base URL
+# api_key_env_var = "OPENAI_API_KEY"            # env var holding the API key
+# model_id = "gpt-4o"                            # model to use

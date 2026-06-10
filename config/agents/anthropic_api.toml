@@ -1,0 +1,43 @@
+# anthropic_api.toml — Direct Anthropic API agent (without Claude Code CLI)
+#
+# Use when you want to call the Anthropic API directly rather than via the
+# Claude Code CLI tool.  llm_provider.py auto-detects api.anthropic.com and
+# switches to Anthropic auth format (x-api-key + anthropic-version headers).
+#
+# Set your API key:  export ANTHROPIC_API_KEY=sk-ant-...
+# Run a task:        python scripts/llm_provider.py run --agent anthropic_api --prompt "..."
+
+[agent]
+name            = "anthropic_api"
+description     = "Direct Anthropic API agent — calls claude-* models via the Anthropic Messages API"
+max_task_size   = "XL"
+preferred_model = "claude-sonnet-4-6"
+qa_gate         = ""
+handoff_to      = ""
+
+[provider]
+type            = "api"
+api_base_url    = "https://api.anthropic.com/v1"
+api_key_env_var = "ANTHROPIC_API_KEY"
+model_id        = "claude-sonnet-4-6"
+
+# Anthropic uses a different auth scheme from OpenAI.
+# llm_provider.py detects api.anthropic.com automatically and sends:
+#   x-api-key: <ANTHROPIC_API_KEY>
+#   anthropic-version: 2023-06-01
+# instead of the standard Authorization: Bearer header.
+
+[task_routing]
+accepts = ["code_review", "architecture", "security", "reasoning", "writing"]
+weight  = 1.0
+
+[rate_limit]
+notify_at_pct = 85
+resume_queue  = true
+
+[output]
+deliverable_path = "owner_inbox/"
+report_path      = "agents/andy/inbox/"
+
+[limits]
+# Add rate-limit / quota config here if needed
