@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -146,7 +147,10 @@ def cmd_create(args):
 
     SPECS_DIR.mkdir(parents=True, exist_ok=True)
     dest = spec_path(task_id)
-    dest.write_text(json.dumps(spec, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Atomic write — prevents file corruption on interrupted write (MINOR-2)
+    tmp = dest.with_suffix('.tmp')
+    tmp.write_text(json.dumps(spec, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, dest)
     print("[OK] Spec written: {}".format(dest))
 
 
