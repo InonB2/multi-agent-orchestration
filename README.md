@@ -23,7 +23,7 @@ This framework solves all four.
 
 ## Requirements
 
-- Python 3.8+ (no external dependencies — stdlib only)
+- Python 3.8+ (no external dependencies — stdlib only; Python <3.11 requires `pip install tomli`)
 - For API providers: set the relevant env var (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`)
 
 ## Installation
