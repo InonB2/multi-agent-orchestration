@@ -207,9 +207,9 @@ When a model hits its limit mid-task:
 | | LangGraph | CrewAI | This framework |
 |---|---|---|---|
 | Multi-model routing | ❌ Single model per graph | ❌ Multi-LLM but no dynamic routing | ✅ Keyword-heuristic routing across providers |
-| Rate-limit checkpointing | ❌ Failure recovery only | ❌ Not addressed | ✅ Quota-exhaustion treated as scheduling |
+| Rate-limit checkpointing | ⚠️ RetryPolicy (fault tolerance, not quota scheduling) | ❌ Not addressed | ✅ Quota-exhaustion treated as scheduling |
 | Pre-task spec gate | ❌ | ❌ Task descriptions, no validation | ✅ Enforced for M/L/XL tasks |
-| External dependencies | pip install langgraph + LangSmith | pip install crewai + extras | ✅ Python stdlib only |
+| External dependencies | pip install langgraph + LangSmith | pip install crewai (standalone since v1.14) | ✅ Python stdlib only |
 | CLI-native | ❌ | ❌ | ✅ Built for Claude Code, Codex CLI, etc. |
 | API-native | ✅ Any LLM | ✅ Any LLM | ✅ OpenAI-compatible + Anthropic |
 
