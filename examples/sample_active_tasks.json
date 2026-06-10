@@ -1,0 +1,29 @@
+[
+  {
+    "task_id": "EXAMPLE-001",
+    "title": "Implement user authentication module",
+    "assigned_to": "codex",
+    "status": "pending",
+    "priority": "high",
+    "complexity": "M",
+    "preferred_provider": null
+  },
+  {
+    "task_id": "EXAMPLE-002",
+    "title": "Research competitor pricing strategies",
+    "assigned_to": "tomy",
+    "status": "pending",
+    "priority": "medium",
+    "complexity": "S",
+    "preferred_provider": null
+  },
+  {
+    "task_id": "EXAMPLE-003",
+    "title": "Design onboarding flow for mobile users",
+    "assigned_to": "lena",
+    "status": "pending",
+    "priority": "low",
+    "complexity": "S",
+    "preferred_provider": null
+  }
+]
