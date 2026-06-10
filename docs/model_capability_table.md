@@ -3,6 +3,8 @@
 > Purpose: Reference for the orchestrator and all agents when deciding which AI model to use for a given task.  
 > Stack: Claude Code (primary orchestrator) · OpenAI Codex CLI (fallback coder) · Google Antigravity CLI / agy (fallback researcher / planner / UI agent)
 
+> **Note:** Model names in this document represent capability tiers and are illustrative examples — substitute the actual model IDs available in your environment. Benchmark figures are approximate and based on internal evaluations; verify against official benchmarks for your specific use case.
+
 ---
 
 ## 1. Primary Capability Table

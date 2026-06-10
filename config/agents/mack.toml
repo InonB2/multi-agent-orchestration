@@ -8,7 +8,7 @@ handoff_to      = "jasmin"
 
 # Example task types — replace with your own automation and integration tools
 [task_types]
-accepts = ["automate", "webhook", "api integration", "script", "mcp", "telegram", "bot", "oauth", "scheduler", "notification", "github sync", "task scheduler", "deployment automation", "app_builder", "integration_platform"]
+accepts = ["automate", "webhook", "api integration", "script", "mcp", "messaging_bot", "bot", "oauth", "scheduler", "notification", "github sync", "task scheduler", "deployment automation", "app_builder", "integration_platform"]
 rejects = ["design", "copywrite", "database schema", "mobile native", "security audit"]
 
 [rate_limit]
