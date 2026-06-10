@@ -16,6 +16,9 @@ Usage:
       -> lists M/L/XL tasks that have no spec yet (excludes done/cancelled/deferred/pending-owner)
 """
 
+# BUG-2: Python 3.8 compatibility — enables 'dict | None' and 'list[str]' annotations
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -228,6 +231,12 @@ def cmd_list_missing(args):
             continue
 
         task_id = task.get("task_id", "")
+
+        # EDGE-5: skip tasks with missing or empty task_id to avoid writing to '.json'
+        if not task_id.strip():
+            print("[WARN] Skipping task with missing task_id", file=sys.stderr)
+            continue
+
         if not spec_path(task_id).exists():
             missing.append({
                 "task_id":    task_id,

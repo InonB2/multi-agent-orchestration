@@ -13,7 +13,9 @@ Usage:
 
 import json
 import os
+import re
 import sys
+import time
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -54,24 +56,60 @@ DEFAULT_PROVIDER = "claude-code"
 
 
 # ---------------------------------------------------------------------------
+# File-lock helpers (cross-platform sidecar-file pattern)  [REL-2]
+# ---------------------------------------------------------------------------
+
+def _acquire_lock(lock_path: Path, timeout: int = 10) -> bool:
+    """Try to create *lock_path* exclusively. Returns True on success, False on timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            return True
+        except FileExistsError:
+            time.sleep(0.05)
+    return False
+
+
+def _release_lock(lock_path: Path) -> None:
+    """Delete the sidecar lock file, ignoring missing-file errors."""
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Provider-type lookup (for enriched routing output)
 # ---------------------------------------------------------------------------
 
-def _load_toml_safe(path: Path) -> dict:
-    """Load a TOML file; return {} on any error (never raises)."""
+def _load_toml_safe(path: Path, agent_name: str = "") -> dict:
+    """Load a TOML file; return {} on any error (never raises).
+
+    REL-4: warns on parse error so misconfigured agent configs are surfaced.
+    """
     if tomllib is None or not path.exists():
         return {}
     try:
         return tomllib.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        if agent_name:
+            print(
+                "[WARN] Could not parse TOML for agent '{}': {}".format(agent_name, exc),
+                file=sys.stderr,
+            )
         return {}
 
 
 def _get_provider_info(agent_name: str) -> tuple:
     """Return (provider_type, model_id) for *agent_name*. Defaults to ('cli', None)."""
     try:
-        defaults   = _load_toml_safe(_CONFIG_DIR / "_defaults.toml")
-        agent_cfg  = _load_toml_safe(_CONFIG_DIR / "{}.toml".format(agent_name.lower()))
+        defaults  = _load_toml_safe(_CONFIG_DIR / "_defaults.toml")
+        agent_cfg = _load_toml_safe(
+            _CONFIG_DIR / "{}.toml".format(agent_name.lower()),
+            agent_name,
+        )
         # Simple merge: agent overrides defaults for provider section
         merged_provider = dict(defaults.get("provider", {}))
         merged_provider.update(agent_cfg.get("provider", {}))
@@ -83,26 +121,35 @@ def _get_provider_info(agent_name: str) -> tuple:
 
 
 def score_task(task: dict) -> dict:
-    """Score a task's title + notes against each provider's keyword list."""
+    """Score a task's title + notes against each provider's keyword list.
+
+    EDGE-1: Uses word-boundary regex instead of plain substring matching to
+    prevent false positives like "prefix" matching "fix" or "rapid" matching "api".
+    """
     text = " ".join([
         task.get("title", ""),
         task.get("notes", "") or "",
-    ]).lower()
+    ])
 
     scores = {provider: 0 for provider in ROUTING_RULES}
     for provider, keywords in ROUTING_RULES.items():
         for kw in keywords:
-            if kw.lower() in text:
+            # Word-boundary match: re.IGNORECASE handles capitalisation
+            if re.search(r'\b' + re.escape(kw) + r'\b', text, re.IGNORECASE):
                 scores[provider] += 1
     return scores
 
 
 def pick_provider(scores: dict) -> str:
-    """Return the provider with the highest score; default to claude-code on tie."""
+    """Return the provider with the highest score.
+
+    On equal scores, provider priority is: codex > antigravity > claude-code.
+    Falls back to the default provider (claude-code) when all scores are zero.
+    """
     best_score = max(scores.values())
     if best_score == 0:
         return DEFAULT_PROVIDER
-    # Pick deterministically: prefer codex > antigravity > claude-code on equal scores
+    # Pick deterministically on tie using explicit priority order
     priority_order = ["codex", "antigravity", "claude-code"]
     for provider in priority_order:
         if scores.get(provider, 0) == best_score:
@@ -111,7 +158,7 @@ def pick_provider(scores: dict) -> str:
 
 
 def route_tasks(dry_run=False, task_id_filter=None):
-    # Load tasks
+    # Load tasks (no lock needed for dry-run; lock acquired before write)
     try:
         data = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -138,7 +185,11 @@ def route_tasks(dry_run=False, task_id_filter=None):
 
     for task in tasks:
         if "preferred_provider" in task:
-            # Already has a provider — skip
+            # EDGE-2: inform the operator instead of silently skipping
+            tid = task.get("task_id", "?")
+            print("[INFO] Task '{}' already has preferred_provider='{}' — skipping.".format(
+                tid, task["preferred_provider"]
+            ))
             continue
 
         scores = score_task(task)
@@ -174,13 +225,26 @@ def route_tasks(dry_run=False, task_id_filter=None):
         ))
         return
 
-    # Atomic write — prevents file corruption on interrupted write (MINOR-2)
-    tmp = TASKS_FILE.with_suffix('.tmp')
-    tmp.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    os.replace(tmp, TASKS_FILE)
+    # EDGE-2: skip the file write entirely if nothing changed
+    if routed_count == 0:
+        print("\nRouted 0 tasks (nothing to update).")
+        return
+
+    # REL-2: acquire lock before writing to guard against concurrent processes
+    lock_path = Path(str(TASKS_FILE) + ".lock")
+    if not _acquire_lock(lock_path):
+        print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
+        sys.exit(1)
+    try:
+        # Atomic write — prevents file corruption on interrupted write (MINOR-2)
+        tmp = TASKS_FILE.with_suffix('.tmp')
+        tmp.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        os.replace(tmp, TASKS_FILE)
+    finally:
+        _release_lock(lock_path)
 
     summary_parts = ["{} -> {}".format(n, p) for p, n in counters.items()]
     print("\nRouted {} tasks: {}".format(routed_count, ", ".join(summary_parts)))

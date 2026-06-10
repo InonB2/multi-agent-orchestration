@@ -5,9 +5,11 @@ Run with:  pytest tests/test_llm_provider.py -v
 """
 
 import argparse
+import io
 import json
 import os
 import sys
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -373,3 +375,92 @@ def test_missing_api_key_not_required_for_dry_run(cfg_dir, monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "dry-run" in out.lower()
+
+
+# ---------------------------------------------------------------------------
+# TST-7: Malformed / edge-case API responses
+# ---------------------------------------------------------------------------
+
+class _FakeResponse:
+    """Context-manager compatible fake urllib response."""
+    def __init__(self, data):
+        if isinstance(data, (dict, list)):
+            self._bytes = json.dumps(data).encode("utf-8")
+        elif isinstance(data, str):
+            self._bytes = data.encode("utf-8")
+        else:
+            self._bytes = data
+
+    def read(self):
+        return self._bytes
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+def test_llm_provider_anthropic_empty_content(cfg_dir, monkeypatch, capsys):
+    """Anthropic response with empty content list must not crash."""
+    monkeypatch.setenv("TEST_ANTHROPIC_KEY", "sk-fake")
+
+    def fake_urlopen(req, timeout=None):
+        return _FakeResponse({"content": []})
+
+    monkeypatch.setattr(lp.urllib.request, "urlopen", fake_urlopen)
+
+    args = argparse.Namespace(agent="testanth", prompt="hello", dry_run=False)
+    # Must not raise — empty content falls back to printing raw JSON
+    lp.cmd_run(args)
+    out = capsys.readouterr().out
+    # Either empty or the raw JSON — both are acceptable; no crash is the key assertion
+    assert out is not None
+
+
+def test_llm_provider_http_429(cfg_dir, monkeypatch, capsys):
+    """HTTP 429 response must cause sys.exit(1) and include '429' in stderr."""
+    monkeypatch.setenv("TEST_OPENAI_KEY", "sk-fake")
+
+    def fake_urlopen(req, timeout=None):
+        raise urllib.error.HTTPError(
+            url="https://api.openai.com/v1/chat/completions",
+            code=429,
+            msg="Too Many Requests",
+            hdrs=None,
+            fp=io.BytesIO(b"rate limit exceeded"),
+        )
+
+    monkeypatch.setattr(lp.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(SystemExit) as exc_info:
+        args = argparse.Namespace(agent="testapi", prompt="hello", dry_run=False)
+        lp.cmd_run(args)
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "429" in err
+
+
+# ---------------------------------------------------------------------------
+# TST-8: agent_config.py (via llm_provider.py cmd_list) — malformed TOML
+# ---------------------------------------------------------------------------
+
+MALFORMED_TOML = """\
+[agent
+name = "broken"   # missing closing bracket — invalid TOML
+"""
+
+
+def test_agent_config_list_with_malformed_toml(cfg_dir, capsys):
+    """cmd_list must print an ERROR row for a broken TOML file and not raise."""
+    # Write a syntactically invalid TOML into the temp config dir
+    (cfg_dir / "badagent.toml").write_text(MALFORMED_TOML, encoding="utf-8")
+
+    # cmd_list should complete without raising any exception
+    lp.cmd_list(argparse.Namespace())
+
+    out = capsys.readouterr().out
+    # The broken agent should appear in the output with an ERROR marker
+    assert "badagent" in out
+    assert "ERROR" in out

@@ -10,26 +10,22 @@ Usage:
     python scripts/agent_config.py list-agents
 """
 
+# BUG-3: Python 3.8 compatibility — enables 'list[str]' return annotations
+from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# TOML import — stdlib (Python 3.11+) with fallback to tomli
-# ---------------------------------------------------------------------------
-try:
-    import tomllib
-except ImportError:
-    try:
-        import tomli as tomllib  # type: ignore[no-redef]
-    except ImportError:
-        print(
-            "[ERROR] TOML library not available.\n"
-            "  Python 3.11+ ships 'tomllib' in the stdlib.\n"
-            "  For older Python: pip install tomli",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+# QA-1: Import shared utilities from config_loader instead of duplicating them
+from config_loader import (
+    ConfigLoadError,
+    deep_merge,
+    get_nested as _cl_get_nested,
+    list_agent_names as _cl_list_agent_names,
+    load_toml as _cl_load_toml,
+    safe_agent_path as _cl_safe_agent_path,
+)
 
 ROOT       = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config" / "agents"
@@ -41,36 +37,23 @@ DEFAULTS   = CONFIG_DIR / "_defaults.toml"
 # ---------------------------------------------------------------------------
 
 def load_toml(path: Path) -> dict:
-    """Load a TOML file. Returns {} if the file does not exist."""
-    if not path.exists():
-        return {}
+    """Load a TOML file. Returns {} if the file does not exist.
+    Calls sys.exit(1) on parse error (agent_config commands are CLI-facing).
+    """
     try:
-        return tomllib.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        print("[ERROR] Failed to parse {}: {}".format(path, exc), file=sys.stderr)
+        return _cl_load_toml(path)
+    except ConfigLoadError as exc:
+        print(str(exc), file=sys.stderr)
         sys.exit(1)
-
-
-def deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge *override* into *base*. Returns a new dict."""
-    result = dict(base)
-    for key, val in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
-            result[key] = deep_merge(result[key], val)
-        else:
-            result[key] = val
-    return result
 
 
 def _safe_agent_path(agent_name: str) -> Path:
     """Resolve the TOML path for *agent_name*, rejecting path-traversal attempts."""
-    candidate = (CONFIG_DIR / "{}.toml".format(agent_name.lower())).resolve()
     try:
-        candidate.relative_to(CONFIG_DIR.resolve())
-    except ValueError:
-        print("[ERROR] Invalid agent name — path traversal detected.", file=sys.stderr)
+        return _cl_safe_agent_path(CONFIG_DIR, agent_name)
+    except ConfigLoadError as exc:
+        print(str(exc), file=sys.stderr)
         sys.exit(1)
-    return candidate
 
 
 def load_agent_config(agent_name: str) -> dict:
@@ -83,19 +66,12 @@ def load_agent_config(agent_name: str) -> dict:
 
 def list_agent_names() -> list[str]:
     """Return sorted list of agent names (TOML stem, excluding _defaults)."""
-    if not CONFIG_DIR.exists():
-        return []
-    return sorted(p.stem for p in CONFIG_DIR.glob("*.toml") if p.stem != "_defaults")
+    return _cl_list_agent_names(CONFIG_DIR)
 
 
 def get_nested(config: dict, dotkey: str):
     """Resolve a dot-notation key like 'agent.max_task_size' from a nested dict."""
-    cur = config
-    for part in dotkey.split("."):
-        if not isinstance(cur, dict) or part not in cur:
-            return None
-        cur = cur[part]
-    return cur
+    return _cl_get_nested(config, dotkey)
 
 
 # ---------------------------------------------------------------------------

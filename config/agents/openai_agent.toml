@@ -20,6 +20,8 @@ type            = "api"
 api_base_url    = "https://api.openai.com/v1"
 api_key_env_var = "OPENAI_API_KEY"
 model_id        = "gpt-4o"
+# max_tokens = 4096        # Maximum tokens in the response (default: 4096 if not set)
+# timeout_seconds = 60     # HTTP request timeout in seconds (default: 60)
 
 # To use a different OpenAI-compatible endpoint, override api_base_url, e.g.:
 #   Groq:       api_base_url = "https://api.groq.com/openai/v1"
