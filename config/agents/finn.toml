@@ -6,8 +6,9 @@ preferred_model = "claude-code"
 qa_gate         = ""
 handoff_to      = "dev"        # Non-triage infra escalated to Dev
 
+# Example task types — customize for your infrastructure toolchain
 [task_types]
-accepts = ["triage", "mcp health", "bot recovery", "service restart", "env var audit", "health check", "port conflict", "watchdog", "diagnostics", "plugin repair", "telegram bot", "token rotate"]
+accepts = ["triage", "mcp health", "bot recovery", "service restart", "env var audit", "health check", "port conflict", "watchdog", "diagnostics", "plugin repair", "bot_maintenance", "credential_rotation"]
 rejects = ["design", "copywrite", "database schema", "frontend", "mobile", "linkedin"]
 
 [rate_limit]

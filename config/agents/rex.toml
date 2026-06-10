@@ -6,8 +6,9 @@ preferred_model = "claude-code"
 qa_gate         = "vera"       # Vera QA on all Rex UI deliverables
 handoff_to      = "vera"
 
+# Example task types — replace with your frontend/web platforms
 [task_types]
-accepts = ["frontend", "react", "typescript", "component", "dashboard", "website", "html", "css", "javascript", "accessibility", "seo", "performance", "base44", "lovable", "responsive"]
+accepts = ["frontend", "react", "typescript", "component", "dashboard", "website", "html", "css", "javascript", "accessibility", "seo", "performance", "web_platform", "app_builder", "responsive"]
 rejects = ["security audit", "database schema", "mobile native", "devops"]
 
 [rate_limit]

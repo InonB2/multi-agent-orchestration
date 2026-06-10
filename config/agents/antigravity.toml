@@ -1,6 +1,6 @@
 # antigravity.toml — Fallback Researcher / Planner (Antigravity CLI: `agy`)
 # Activated when Claude is rate-limited and research/planning tasks are queued.
-# Context loaded from: GEMINI.md + scratchpad/handoff_latest.md
+# Adapt context loading to your project's equivalent handoff or context files (e.g., AGENTS.md, GEMINI.md)
 # QA gate: Tomy -> Yoni chain
 
 [agent]

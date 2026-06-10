@@ -1,6 +1,6 @@
 # codex.toml — Fallback Coder (OpenAI Codex CLI)
 # Activated when Claude is rate-limited and coding tasks are queued.
-# Context loaded from: AGENTS.md + scratchpad/handoff_latest.md
+# Adapt context loading to your project's equivalent handoff or context files (e.g., CLAUDE.md, AGENTS.md)
 # QA gate: Jasmin
 
 [agent]
