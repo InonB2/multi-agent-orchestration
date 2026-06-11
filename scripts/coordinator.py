@@ -41,7 +41,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT          = Path(__file__).resolve().parent.parent
@@ -117,7 +117,7 @@ def _find_task(data: dict, task_id: str) -> dict | None:
 
 
 def _timestamp() -> str:
-    return datetime.utcnow().isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat()
 
 
 _TASK_ID_RE = re.compile(r'^[A-Za-z0-9_\-]+$')

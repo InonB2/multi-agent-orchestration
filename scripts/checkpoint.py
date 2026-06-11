@@ -26,7 +26,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT          = Path(__file__).resolve().parent.parent
@@ -192,7 +192,7 @@ def cmd_save(args):
     checkpoint = {
         "task_id": task_id,
         "model": model,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "done": done,
         "remaining": remaining,
         "next_step": next_step,
@@ -219,7 +219,7 @@ def cmd_save(args):
         "resume_at_estimate": "next_session",
         "interrupted_by": interrupted_by,
         "checkpoint_path": str(snap_path.relative_to(ROOT)),  # BLOCKER-3: store relative, not absolute
-        "queued_at": datetime.utcnow().isoformat() + "Z",
+        "queued_at": datetime.now(timezone.utc).isoformat(),
         "resumed": False,
     })
     _write_queue(queue)
