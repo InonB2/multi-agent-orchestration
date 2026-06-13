@@ -66,6 +66,7 @@ Thumbs.db
 logs/
 
 # Runtime state
+tasks/active_tasks.json
 tasks/snapshots/
 tasks/queue/resume_queue.json
 scratchpad/

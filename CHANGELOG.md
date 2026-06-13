@@ -4,6 +4,24 @@ All notable changes to this project will be documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Publish-readiness pass:** corrected docs/examples that did not match the code.
+  - `examples/sample_active_tasks.json` now uses the canonical `{"tasks": [...]}` envelope (was a bare array that crashed the quickstart).
+  - `task_router.py` now emits a clear error if `active_tasks.json` is not an object with a `tasks` array.
+  - README Quick Start uses real commands (`coordinator.py mark-tested` / `mark-done`); removed the non-existent `complete` command.
+  - Reframed routing docs (README + capability table) to describe the actual keyword-heuristic router across three providers (was "8 capability-based rules").
+  - Unified agent-config schema on `[task_types]` (the two API example configs used `[task_routing]`); documented that these fields are descriptive metadata, not read by the router.
+  - Reconciled Opus version label (4.8) and relabelled benchmark figures as illustrative estimates.
+  - Unified task-status taxonomy in the README schema (added `backlog`, `tested`).
+  - **Fixed red CI:** added a single-sourced `.flake8` config (the CI lint step was failing on main because `--ignore` overrode flake8's defaults, surfacing the codebase's intentional column-alignment style). CI and CONTRIBUTING now both run `flake8 scripts/`.
+  - Added `config/agents/claude-code.toml` so the default provider's enriched label resolves.
+  - Pinned GitHub Actions to commit SHAs.
+  - `task_router.py` now treats a `null` `preferred_provider` as unrouted (matching the documented task schema), so the quickstart sample routes instead of being skipped.
+  - Added `tasks/active_tasks.json` to `.gitignore` (runtime state, created by the quickstart).
+
+### Added
+- Doc/quickstart guard test (`tests/test_docs_quickstart.py`): runs the documented quickstart end-to-end against the shipped sample file and asserts every `scripts/*.py <subcommand>` referenced in README/quickstart exists.
+
 ## [0.2.0] — 2026-06-10
 
 ### Added
@@ -13,7 +31,7 @@ All notable changes to this project will be documented here.
 - `[provider]` section in `_defaults.toml` — agents declare `type = "cli"` or `"api"`
 - Auto-detection of Anthropic auth format (`x-api-key` + `anthropic-version` header)
 - GitHub Actions CI workflow (Python 3.8 / 3.10 / 3.12 matrix)
-- 50 pytest tests across all 5 core scripts + new provider tests
+- 64 pytest tests across all 5 core scripts + new provider tests
 - `examples/` directory with `sample_active_tasks.json` and `quickstart.md`
 
 ### Fixed
@@ -29,7 +47,7 @@ All notable changes to this project will be documented here.
 - `scripts/task_router.py` — keyword-heuristic task routing to AI agents
 - `scripts/task_spec.py` — pre-task specification enforcer for M/L/XL tasks
 - `scripts/checkpoint.py` — mid-task state saving with resume queue
-- `scripts/coordinator.py` — task lifecycle manager (claim/update/complete)
+- `scripts/coordinator.py` — task lifecycle manager (claim/update/checkpoint/mark-tested/mark-done)
 - `scripts/agent_config.py` — TOML-based agent config with deep-merge defaults
 - 21 agent TOML configs + `_defaults.toml` base layer
 - `docs/model_capability_table.md` — benchmark-backed routing rationale

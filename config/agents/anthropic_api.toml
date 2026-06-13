@@ -29,9 +29,11 @@ model_id        = "claude-sonnet-4-6"
 #   anthropic-version: 2023-06-01
 # instead of the standard Authorization: Bearer header.
 
-[task_routing]
+# [task_types] is descriptive metadata only — see _defaults.toml. The router
+# does not read it; routing is keyword-based in scripts/task_router.py.
+[task_types]
 accepts = ["code_review", "architecture", "security", "reasoning", "writing"]
-weight  = 1.0
+rejects = []
 
 [rate_limit]
 notify_at_pct = 85

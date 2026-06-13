@@ -73,8 +73,9 @@ python scripts/checkpoint.py list-resumable
 # Claim a task as a model
 python scripts/coordinator.py claim --task TASK-001 --model claude-code
 
-# Mark complete
-python scripts/coordinator.py complete --task TASK-001 --result-path output/task_001_result.md
+# Mark tested (QA sign-off), then mark done (final)
+python scripts/coordinator.py mark-tested --task TASK-001 --result-path output/task_001_result.md
+python scripts/coordinator.py mark-done --task TASK-001
 
 # Check if a task has a pre-task spec
 python scripts/task_spec.py validate --task TASK-001
@@ -87,9 +88,9 @@ python scripts/agent_config.py show --agent codex
 
 | Script | Purpose |
 |--------|---------|
-| `task_router.py` | Routes tasks to claude-code, codex, or antigravity using 8 capability-based rules |
+| `task_router.py` | Routes tasks to claude-code, codex, or antigravity via keyword-heuristic scoring across three providers |
 | `checkpoint.py` | Saves mid-task state; appends to resume queue; marks resumed |
-| `coordinator.py` | Task lifecycle: claim → update → checkpoint → complete |
+| `coordinator.py` | Task lifecycle: claim → update → checkpoint → mark-tested → mark-done |
 | `task_spec.py` | Enforces pre-task specs for M/L/XL tasks before execution |
 | `agent_config.py` | Loads per-agent TOML config with project-level deep-merge overrides |
 | `llm_provider.py` | LLM-agnostic provider abstraction — CLI tools or direct API endpoints |
@@ -116,7 +117,7 @@ Each task in `active_tasks.json` follows this structure:
 | `task_id` | Yes | `[A-Za-z0-9_-]+` | Unique identifier |
 | `title` | Yes | string | Plain-language task description — used by the router |
 | `assigned_to` | Yes | agent name | Which agent owns this task |
-| `status` | Yes | `pending`, `in_progress`, `done`, `blocked` | Current state |
+| `status` | Yes | `backlog`, `pending`, `in_progress`, `blocked`, `tested`, `done` | Current state (`tested` = QA-signed-off, set by `coordinator.py mark-tested`) |
 | `priority` | No | `high`, `medium`, `low` | Used for ordering |
 | `complexity` | No | `S`, `M`, `L`, `XL` | Used to decide if a spec is required |
 | `preferred_provider` | No | provider name or `null` | Set by the router; null means unrouted |
@@ -178,20 +179,29 @@ See `config/agents/openai_agent.toml` and `config/agents/anthropic_api.toml` for
 
 ## Routing Rules
 
-Tasks are routed using keyword heuristics informed by benchmark-backed capability research — see [docs/model_capability_table.md](docs/model_capability_table.md) for the full routing rationale.
+`task_router.py` scores each task's `title` + `notes` against three hardcoded keyword
+lists — one per provider — using word-boundary matching, and assigns the highest-scoring
+provider. The keyword lists capture the capability rationale documented in
+[docs/model_capability_table.md](docs/model_capability_table.md), but the router itself is a
+simple keyword heuristic, **not** a rules engine that evaluates conditions like complexity,
+subtask count, or rate-limit state.
 
-The 8 rules (in priority order):
+How a provider is chosen:
 
-1. Browser / E2E / scraping → **Antigravity**
-2. Long-context research / synthesis → **Antigravity**
-3. Architecture / complex reasoning / writing → **Claude**
-4. Single-file isolated scripts at S/M complexity → **Codex**
-5. Fast parallel execution (>5 independent tasks) → **Antigravity**
-6. Economy routing (cost-sensitive, simple) → **Antigravity**
-7. SWE-bench-style multi-file refactors → **Claude**
-8. Default → **Claude**
+1. Each provider's keyword list is matched against the task text; each hit scores +1.
+2. The highest-scoring provider wins.
+3. On a tie, priority order is **codex → antigravity → claude-code**.
+4. If no keyword matches (score 0 for all), the task falls back to the default provider, **claude-code**.
 
-See `docs/model_capability_table.md` for the full benchmark-backed capability table.
+The three keyword lists (see `ROUTING_RULES` in `scripts/task_router.py` for the full set):
+
+- **codex** — `implement`, `refactor`, `api`, `endpoint`, `migration`, `schema`, `fix`, `bug`, `code review`, `lint`, …
+- **antigravity** — `research`, `summarize`, `analyze`, `design`, `ui`, `browser`, `e2e`, `document`, `report`, `scrape`, …
+- **claude-code** — `orchestrate`, `delegate`, `architect`, `coordinate`, `multi-file`, `debug`, `subagent`, `workflow`, …
+
+The capability table in `docs/model_capability_table.md` is the **rationale** behind these
+keyword choices, not an executed rule set. To change routing, edit the keyword lists in
+`scripts/task_router.py`.
 
 ## Rate Limit Policy
 

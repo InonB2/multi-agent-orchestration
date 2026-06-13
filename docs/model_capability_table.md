@@ -36,9 +36,15 @@
 | **Mid-task checkpointing / resume support** | ✅ Best — native checkpointing; `claude --resume` reloads last transcript; `SessionStore` for external state; worktree refs preserved | ⚠️ Good — `--output-last-message` flag; `threadId` / worktree refs allow continuation; less seamless than CC | ⚠️ Good — `agy /resume` picks up from conversation history with workspace files intact; session identifier printed on exit; conversation export available |
 | **Multi-file diff / patch application** | ✅ Best — coordinated multi-file patches in single session; strong at understanding diff context and applying cleanly; Agent Teams can parallelize | ✅ Best — cloud sandbox creates clean, structured PRs from diffs; worktrees native to workflow; GitHub PR integration documented | ⚠️ Good — Ghost Runtime can apply diffs and commit; PR generation less mature; best used when patches are artifacts of a broader build workflow |
 
-### Benchmark reference table (2026-06-09)
+### Benchmark reference table (illustrative)
 
-| Benchmark | Claude Code (Opus 4.6) | Codex CLI (GPT-5.3-Codex / newer) | Antigravity (Gemini 3.5 Flash) |
+> **These figures are illustrative estimates, not measured results.** They are
+> approximate, were not independently reproduced for this repo, and the linked
+> articles below are starting points for the reader — they have not been verified
+> to substantiate each specific number. Treat every value as a rough capability
+> tier indicator and confirm against official benchmarks for your own use case.
+
+| Benchmark | Claude Code (Opus 4.8) | Codex CLI (GPT-5.3-Codex / newer) | Antigravity (Gemini 3.5 Flash) |
 |---|---|---|---|
 | SWE-bench Verified | 80.8% | 88.7% (newer model) | 81.0% |
 | SWE-bench Pro | 64.3% | 58.6% (GPT-5.3-Codex) | 55.1% |
@@ -49,13 +55,24 @@
 | Output speed (tok/s, approx) | ~67 | ~100–120 | ~289 |
 | Cost per 1M in/out tokens | $3 / $15 (Sonnet 4.6) | API-based (model-dependent) | $1.50 / $9 (Flash) |
 
-Sources: [morphllm.com/claude-benchmarks](https://www.morphllm.com/claude-benchmarks), [smartscope.blog/codex-vs-claude-code-2026-benchmark](https://smartscope.blog/en/generative-ai/chatgpt/codex-vs-claude-code-2026-benchmark/), [llm-stats.com/gemini-3.5-flash](https://llm-stats.com/blog/research/gemini-3.5-flash-launch), [kommunicate.io/blog/claude-code-vs-codex-vs-antigravity](https://www.kommunicate.io/blog/claude-code-vs-codex-vs-antigravity/), [thenewstack.io/claude-code-vs-cursor-vs-codex-vs-antigravity-2026](https://thenewstack.io/claude-code-vs-cursor-vs-codex-vs-antigravity-2026/)
+Indicative reading (not verified to substantiate the exact figures above): [morphllm.com/claude-benchmarks](https://www.morphllm.com/claude-benchmarks), [smartscope.blog/codex-vs-claude-code-2026-benchmark](https://smartscope.blog/en/generative-ai/chatgpt/codex-vs-claude-code-2026-benchmark/), [llm-stats.com/gemini-3.5-flash](https://llm-stats.com/blog/research/gemini-3.5-flash-launch), [kommunicate.io/blog/claude-code-vs-codex-vs-antigravity](https://www.kommunicate.io/blog/claude-code-vs-codex-vs-antigravity/), [thenewstack.io/claude-code-vs-cursor-vs-codex-vs-antigravity-2026](https://thenewstack.io/claude-code-vs-cursor-vs-codex-vs-antigravity-2026/)
 
 ---
 
 ## 2. Recommended Routing Rules
 
-These rules are designed to be actionable by a Python router script. Each rule has a `condition`, a `target`, and a `reason`. When multiple rules match, apply the first matching rule in order.
+> **Rationale, not the implemented router.** The rules below express the *intent* behind
+> provider selection. The shipped router (`scripts/task_router.py`) is a simpler keyword
+> heuristic: it scores task text against three hardcoded keyword lists (codex / antigravity /
+> claude-code) and picks the top scorer, with a fixed tie-break of codex → antigravity →
+> claude-code and a claude-code default. It does **not** evaluate signals such as
+> `task_complexity`, `subtask_count`, `budget_mode`, or `http_status == 429`. As a result the
+> live router can differ from these rules — for example `refactor` is a **codex** keyword
+> (Rule 2/4 notwithstanding) and `document`/`report` are **antigravity** keywords (Rule 3
+> notwithstanding). Use this section to understand *why* keywords were assigned; use the
+> `ROUTING_RULES` lists in `scripts/task_router.py` for what actually executes.
+
+These rules are written as if actionable by a router that evaluates conditions in order. Each rule has a `condition`, a `target`, and a `reason`. When multiple rules match, apply the first matching rule in order.
 
 **Rule 1 — Browser / UI / E2E testing**  
 `IF task_type IN ["browser_automation", "e2e_test", "visual_verification", "screenshot_test"]`  
