@@ -1,0 +1,45 @@
+# deploy/vps/orchestration-loop.service — systemd unit for the 24/7 loop.
+#
+# OPTIONAL self-host path. Install to /etc/systemd/system/ (setup.sh does this),
+# then:  sudo systemctl enable --now orchestration-loop
+#
+# Auto-restarts on crash. Secrets are injected from /opt/orchestration/.env via
+# EnvironmentFile — never hardcode keys in this unit.
+
+[Unit]
+Description=Multi-Agent Orchestration loop (task routing + resume-queue checks)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Non-root service account created by setup.sh.
+User=orchestrator
+Group=orchestrator
+
+WorkingDirectory=/opt/orchestration
+
+# Secrets + tunables. "-" prefix means "do not fail if the file is missing",
+# but you should create it from .env.example before enabling the service.
+EnvironmentFile=-/opt/orchestration/.env
+
+ExecStart=/usr/bin/env bash /opt/orchestration/deploy/vps/run_loop.sh
+
+# Auto-restart on any exit, with backoff to avoid hammering on a hard failure.
+Restart=always
+RestartSec=10
+
+# --- Hardening (defence in depth; safe defaults for a stdlib-only Python app) ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/orchestration/tasks
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orchestration-loop
+
+[Install]
+WantedBy=multi-user.target

@@ -100,6 +100,13 @@ authentication/health probe, then captures the agent's final report and returns 
 truthful exit code. See [`docs/dispatch.md`](docs/dispatch.md) for flags and adapter
 details.
 
+## Self-hosting (optional)
+
+Managed hosting (e.g. Railway) is the simplest default for running always-on.
+If you'd rather self-host on a VPS you control, there's an optional guide at
+[docs/self-hosting-vps.md](docs/self-hosting-vps.md) with a `deploy/vps/` setup
+script and systemd unit. No credentials or provisioning are included.
+
 ## Honest v1 scope
 
 - Routing uses static title keywords and complexity tiers. Telemetry exists, but
