@@ -1,0 +1,41 @@
+# deploy/vps/Caddyfile.example — Caddy reverse proxy + automatic HTTPS for the
+# Andy API Gateway. setup_gateway.sh renders @SITE@ / @GATEWAY_PORT@ and installs
+# the result to /etc/caddy/Caddyfile.
+#
+# With a real domain (@SITE@ = andy.example.com), Caddy obtains and renews a
+# Let's Encrypt certificate automatically — no manual certbot. With no domain,
+# setup_gateway.sh injects `tls internal` for a self-signed cert on :443.
+#
+# Caddy terminates TLS and proxies to the loopback-only uvicorn process. The
+# gateway itself is never exposed directly to the internet.
+
+@SITE@ {
+	# TLS: empty for a real domain (Caddy auto-issues Let's Encrypt); rendered as
+	# `tls internal` (self-signed) when no domain is set. setup_gateway.sh fills it.
+	@TLS@
+
+	# Reverse-proxy all traffic to the local gateway.
+	reverse_proxy 127.0.0.1:@GATEWAY_PORT@
+
+	# Security headers (defence in depth; gateway is a JSON API).
+	header {
+		# Don't advertise the server software.
+		-Server
+		# HSTS — only meaningful with a real cert; harmless otherwise.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+
+	# Reasonable request body cap (CV payloads are small; gateway enforces 512KB).
+	request_body {
+		max_size 1MB
+	}
+
+	# Access + error logs to the system journal (view: journalctl -u caddy -f).
+	log {
+		output stderr
+		format console
+	}
+}

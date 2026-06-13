@@ -1,0 +1,51 @@
+# deploy/vps/andy-gateway.service — systemd unit for the Andy API Gateway.
+#
+# OPTIONAL self-host path. setup_gateway.sh renders the @PLACEHOLDERS@ and
+# installs this to /etc/systemd/system/andy-gateway.service, then:
+#   sudo systemctl enable --now andy-gateway
+#
+# Runs uvicorn bound to LOOPBACK ONLY (127.0.0.1). Public traffic reaches it
+# exclusively through Caddy (TLS termination + reverse proxy). The gateway is
+# never directly exposed. Secrets are injected from .env via EnvironmentFile —
+# never hardcode keys here.
+
+[Unit]
+Description=Andy API Gateway (FastAPI/uvicorn) — MMOI routing layer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Non-root service account (owns the gateway + the 3 CLI logins).
+User=@MMOI_USER@
+Group=@MMOI_USER@
+
+WorkingDirectory=@GATEWAY_DIR@
+
+# Secrets + tunables. ANDY_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY,
+# GOOGLE_AI_API_KEY, PORT, etc. live ONLY in this file (mode 600, gitignored).
+EnvironmentFile=-@GATEWAY_DIR@/.env
+
+# Bind loopback only — Caddy is the sole public entrypoint.
+ExecStart=@GATEWAY_DIR@/.venv/bin/uvicorn main:app --host 127.0.0.1 --port @GATEWAY_PORT@
+
+Restart=always
+RestartSec=5
+
+# --- Hardening (defence in depth) ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+# The CLI-default path (future cli_providers module) shells out to claude/codex/
+# agy, which read creds from the mmoi home; relax ProtectHome to read-only so
+# those credential files remain readable. If the gateway needs to WRITE under
+# home for a CLI cache, add a ReadWritePaths= line for that specific dir only.
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=andy-gateway
+
+[Install]
+WantedBy=multi-user.target

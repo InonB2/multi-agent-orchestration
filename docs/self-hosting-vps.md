@@ -163,6 +163,54 @@ left as an exercise and is a drop-in replacement for `ExecStart`.
 
 ---
 
+## Optional: also host the Andy API Gateway + the 3 agent CLIs (MMOI)
+
+The loop above is a headless task router with **no inbound port**. If you instead
+(or additionally) want this box to host the **Andy API Gateway** (the FastAPI
+routing service, normally on Railway) and run the three agent CLIs
+(`claude`, `codex`, `agy`) for a CLI-default routing strategy, three extra
+scripts under `deploy/vps/` cover it:
+
+| Script | Purpose |
+|---|---|
+| `install_clis.sh` | Installs Node 20 + Claude Code + Codex CLI + Antigravity (`agy`) under a non-root `mmoi` user. Binaries only — you log each CLI in interactively once. |
+| `setup_gateway.sh` | Installs Python 3.11 + Caddy, creates a venv for the gateway at `/opt/andy-gateway`, installs the `andy-gateway` systemd unit (uvicorn on loopback) and a Caddy reverse-proxy with **automatic HTTPS**, and opens ufw 80/443. |
+| `andy-gateway.service` / `Caddyfile.example` | Templates rendered by `setup_gateway.sh`. |
+
+```bash
+# 1. Put the gateway source on the box (its own repo, may be private):
+sudo git clone <your-andy-gateway-repo> /opt/andy-gateway   # or scp it up
+
+# 2. Install the CLIs (then log each one in as the mmoi user — see below):
+sudo bash deploy/vps/install_clis.sh
+
+# 3. Stand up the gateway behind Caddy TLS (set your domain for a real cert):
+sudo GATEWAY_DOMAIN=andy.example.com bash deploy/vps/setup_gateway.sh
+
+# 4. Add secrets, then restart:
+sudo -u mmoi nano /opt/andy-gateway/.env   # ANDY_API_KEY + provider keys
+sudo systemctl restart andy-gateway
+```
+
+Log each CLI in once, interactively, as the `mmoi` user:
+
+```bash
+sudo -iu mmoi
+claude setup-token   # OAuth token (Pro/Max). Generate ON THIS BOX, never copy one.
+codex login          # device-code login -> ~/.codex/auth.json
+agy login            # device-code login -> libsecret keyring
+```
+
+> **ToS flags (read honestly):** `claude -p` draws from a capped monthly
+> Agent-SDK credit on subscription plans from **2026-06-15**; OpenAI does **not**
+> officially support headless automation of a personal ChatGPT plan (API key is
+> the recommended programmatic path); Antigravity is a **free preview** with no
+> SLA. Keep the HTTP-API fallback (provider keys in `.env`) for all three.
+
+The gateway binds **127.0.0.1 only**; Caddy is the sole public entrypoint
+(ports 80/443). A full operator walkthrough lives in the owner's
+`HOSTINGER_VPS_SETUP_GUIDE.md`.
+
 ## Security notes
 
 - The loop runs as the unprivileged `orchestrator` user, not root, with systemd
