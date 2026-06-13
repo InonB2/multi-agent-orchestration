@@ -1,0 +1,4 @@
+# Shell scripts and systemd units must keep LF endings — CRLF breaks them on Linux.
+*.sh            text eol=lf
+*.service       text eol=lf
+deploy/vps/.env.example text eol=lf
