@@ -168,6 +168,15 @@ def route_tasks(dry_run=False, task_id_filter=None):
         print("[ERROR] Failed to parse tasks/active_tasks.json: {}".format(exc), file=sys.stderr)
         sys.exit(1)
 
+    if not isinstance(data, dict):
+        print(
+            '[ERROR] active_tasks.json must be an object with a "tasks" array '
+            '(e.g. {"tasks": [...]}), but got a top-level '
+            + type(data).__name__ + '.',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     all_tasks = data.get("tasks", [])
 
     # If a specific task ID was requested, filter to just that task
@@ -184,11 +193,14 @@ def route_tasks(dry_run=False, task_id_filter=None):
     routed_count = 0
 
     for task in tasks:
-        if "preferred_provider" in task:
+        # A null/absent preferred_provider means "unrouted" per the documented
+        # task schema, so only skip tasks that already carry a real provider.
+        existing_provider = task.get("preferred_provider")
+        if existing_provider:
             # EDGE-2: inform the operator instead of silently skipping
             tid = task.get("task_id", "?")
             print("[INFO] Task '{}' already has preferred_provider='{}' — skipping.".format(
-                tid, task["preferred_provider"]
+                tid, existing_provider
             ))
             continue
 

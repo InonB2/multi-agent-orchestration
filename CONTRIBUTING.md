@@ -14,14 +14,18 @@ Thank you for your interest in contributing to the multi-agent orchestration fra
 1. Copy `config/agents/_defaults.toml` to `config/agents/your_agent.toml`
 2. Fill in `[agent]` section (name, description, model)
 3. Choose `provider.type = "cli"` or `"api"` and fill in the relevant fields
-4. Add your agent's task types to the `[task_routing]` section
+4. Describe your agent's specialisation in the `[task_types]` section (`accepts` / `rejects`)
+
+   > Note: `[task_types]` is **descriptive metadata** — the router (`scripts/task_router.py`)
+   > routes by its own keyword lists and does not read these fields. Editing them documents
+   > intent but does not change routing behaviour.
 
 ## Submitting changes
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feat/your-feature`)
 3. Run tests: `pytest tests/ -v`
-4. Run linter: `flake8 scripts/ --max-line-length=120`
+4. Run linter (same command CI runs; config lives in `.flake8`): `flake8 scripts/`
 5. Submit a pull request to `main`
 
 ## Reporting issues

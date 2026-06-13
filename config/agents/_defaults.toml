@@ -8,6 +8,10 @@ preferred_model = "claude-code"
 qa_gate         = ""           # which agent does QA on this agent's output
 handoff_to      = ""           # default handoff agent on rate limit
 
+# NOTE: [task_types] is descriptive metadata only. The live router
+# (scripts/task_router.py) routes by keyword scoring over its own hardcoded
+# ROUTING_RULES lists and does NOT read these fields. Editing them documents
+# an agent's intended specialisation but does not change routing behaviour.
 [task_types]
 accepts = []                   # task type keywords this agent specialises in
 rejects = []                   # task types to never route here
