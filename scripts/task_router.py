@@ -54,6 +54,86 @@ ROUTING_RULES = {
 
 DEFAULT_PROVIDER = "claude-code"
 
+# ---------------------------------------------------------------------------
+# ORCH-19 — keyword weighting, negative keywords, confidence threshold.
+#
+# BACKWARD-COMPAT: with no config file present the effective behaviour is
+# IDENTICAL to the original flat scorer — every keyword weighs 1, there are no
+# negative keywords, and the confidence threshold is 0 (disabled). Nothing
+# silently re-routes unless config/routing.toml opts in.
+# ---------------------------------------------------------------------------
+ROUTING_CONFIG_FILE = ROOT / "config" / "routing.toml"
+
+DEFAULT_KEYWORD_WEIGHT       = 1
+DEFAULT_CONFIDENCE_THRESHOLD = 0          # 0 = disabled (original behaviour)
+# Tie-break / scan order. Original priority preserved.
+PRIORITY_ORDER = ["codex", "antigravity", "claude-code"]
+
+
+class RoutingConfig:
+    """Resolved routing knobs: weights, negative keywords, threshold, fallback."""
+
+    def __init__(self, weights, negatives, threshold, fallback, priority):
+        self.weights   = weights       # {provider: {keyword: weight}}
+        self.negatives = negatives     # {provider: {keyword: weight}}
+        self.threshold = threshold     # float/int; 0 disables the gate
+        self.fallback  = fallback      # provider used below threshold / on zero
+        self.priority  = priority      # tie-break order (list of providers)
+
+
+def _default_weights() -> dict:
+    """Weight map equivalent to the original flat scorer (every keyword = 1)."""
+    return {
+        provider: {kw: DEFAULT_KEYWORD_WEIGHT for kw in keywords}
+        for provider, keywords in ROUTING_RULES.items()
+    }
+
+
+def load_routing_config(path: Path = None) -> RoutingConfig:
+    """Build a RoutingConfig, overlaying config/routing.toml onto the defaults.
+
+    A missing/empty/malformed file yields the original behaviour (see
+    _load_toml_safe, which never raises). Recognised TOML schema::
+
+        [routing]
+        confidence_threshold = 2          # below this -> fallback (0 = off)
+        fallback_provider     = "claude-code"
+
+        [routing.priority]
+        order = ["codex", "antigravity", "claude-code"]
+
+        [weights.codex]                   # override / add keyword weights
+        "security audit" = 3
+
+        [negative_keywords.codex]         # subtract on match
+        design = 2
+    """
+    if path is None:
+        path = ROUTING_CONFIG_FILE
+    cfg = _load_toml_safe(path, "routing")
+
+    weights = _default_weights()
+    for provider, kwmap in (cfg.get("weights") or {}).items():
+        bucket = weights.setdefault(provider, {})
+        for kw, weight in kwmap.items():
+            bucket[kw] = weight
+
+    negatives = {}
+    for provider, kwmap in (cfg.get("negative_keywords") or {}).items():
+        negatives[provider] = dict(kwmap)
+
+    routing   = cfg.get("routing") or {}
+    threshold = routing.get("confidence_threshold", DEFAULT_CONFIDENCE_THRESHOLD)
+    fallback  = routing.get("fallback_provider", DEFAULT_PROVIDER)
+    priority  = (routing.get("priority") or {}).get("order") or list(PRIORITY_ORDER)
+
+    return RoutingConfig(weights, negatives, threshold, fallback, priority)
+
+
+def _keyword_matches(keyword: str, text: str) -> bool:
+    """Word-boundary, case-insensitive match (EDGE-1) — prevents 'prefix'~'fix'."""
+    return re.search(r'\b' + re.escape(keyword) + r'\b', text, re.IGNORECASE) is not None
+
 
 # ---------------------------------------------------------------------------
 # File-lock helpers (cross-platform sidecar-file pattern)  [REL-2]
@@ -120,41 +200,68 @@ def _get_provider_info(agent_name: str) -> tuple:
         return "cli", None
 
 
-def score_task(task: dict) -> dict:
-    """Score a task's title + notes against each provider's keyword list.
+def score_task(task: dict, weights: dict = None, negatives: dict = None) -> dict:
+    """Score a task's title + notes against each provider's weighted keywords.
 
-    EDGE-1: Uses word-boundary regex instead of plain substring matching to
-    prevent false positives like "prefix" matching "fix" or "rapid" matching "api".
+    EDGE-1: word-boundary regex (not substring) prevents false positives like
+    "prefix" matching "fix" or "rapid" matching "api".
+
+    ORCH-19:
+      * *weights*   — {provider: {keyword: weight}}. Defaults to the flat map
+        (every keyword weighs 1), so the unweighted result is byte-identical to
+        the original scorer.
+      * *negatives* — {provider: {keyword: weight}}. Each matched negative
+        keyword SUBTRACTS its weight from that provider's score, letting config
+        steer a task away from a provider it would otherwise win.
     """
+    if weights is None:
+        weights = _default_weights()
+    if negatives is None:
+        negatives = {}
+
     text = " ".join([
         task.get("title", ""),
         task.get("notes", "") or "",
     ])
 
-    scores = {provider: 0 for provider in ROUTING_RULES}
-    for provider, keywords in ROUTING_RULES.items():
-        for kw in keywords:
-            # Word-boundary match: re.IGNORECASE handles capitalisation
-            if re.search(r'\b' + re.escape(kw) + r'\b', text, re.IGNORECASE):
-                scores[provider] += 1
+    providers = set(weights) | set(negatives)
+    scores = {provider: 0 for provider in providers}
+    for provider in providers:
+        for kw, weight in weights.get(provider, {}).items():
+            if _keyword_matches(kw, text):
+                scores[provider] += weight
+        for kw, weight in negatives.get(provider, {}).items():
+            if _keyword_matches(kw, text):
+                scores[provider] -= weight
     return scores
 
 
-def pick_provider(scores: dict) -> str:
-    """Return the provider with the highest score.
+def pick_provider(scores: dict, threshold=0, fallback: str = None,
+                  priority: list = None) -> str:
+    """Return the best-scoring provider.
 
-    On equal scores, provider priority is: codex > antigravity > claude-code.
-    Falls back to the default provider (claude-code) when all scores are zero.
+    On equal scores, *priority* order decides (default codex > antigravity >
+    claude-code). Falls back to *fallback* (default claude-code) when every
+    score is <= 0, or — ORCH-19 — when the best score is below *threshold*
+    (a positive threshold; 0 disables the gate, preserving original behaviour).
     """
+    if fallback is None:
+        fallback = DEFAULT_PROVIDER
+    if priority is None:
+        priority = PRIORITY_ORDER
+    if not scores:
+        return fallback
+
     best_score = max(scores.values())
-    if best_score == 0:
-        return DEFAULT_PROVIDER
-    # Pick deterministically on tie using explicit priority order
-    priority_order = ["codex", "antigravity", "claude-code"]
-    for provider in priority_order:
+    if best_score <= 0:
+        return fallback
+    if threshold and best_score < threshold:
+        return fallback
+
+    for provider in priority:
         if scores.get(provider, 0) == best_score:
             return provider
-    return DEFAULT_PROVIDER
+    return fallback
 
 
 def route_tasks(dry_run=False, task_id_filter=None):
@@ -189,6 +296,9 @@ def route_tasks(dry_run=False, task_id_filter=None):
     else:
         tasks = all_tasks
 
+    # ORCH-19: load weighting/threshold config (no-op default = original flow)
+    cfg = load_routing_config()
+
     counters = {provider: 0 for provider in ROUTING_RULES}
     routed_count = 0
 
@@ -204,11 +314,19 @@ def route_tasks(dry_run=False, task_id_filter=None):
             ))
             continue
 
-        scores = score_task(task)
-        provider = pick_provider(scores)
+        scores = score_task(task, cfg.weights, cfg.negatives)
+        provider = pick_provider(scores, cfg.threshold, cfg.fallback, cfg.priority)
 
         task_id = task.get("task_id", "?")
         title   = task.get("title", "(no title)")
+
+        # ORCH-19: surface low-confidence routings (best > 0 but under threshold)
+        best_score = max(scores.values()) if scores else 0
+        if cfg.threshold and 0 < best_score < cfg.threshold:
+            print("[INFO] Task '{}' low-confidence (best score {} < threshold {}) "
+                  "-> routed to fallback '{}'.".format(
+                      task_id, best_score, cfg.threshold, provider))
+
         score_summary = ", ".join("{}={}".format(p, s) for p, s in scores.items())
 
         # Look up provider type for enriched output

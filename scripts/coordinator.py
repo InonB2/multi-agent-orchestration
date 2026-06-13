@@ -9,6 +9,11 @@ Kanban flow: Backlog -> In Progress -> Blocked -> Tested -> Done
   mark-tested sets status="tested" (QA-signed-off, NOT yet final).
   mark-done   sets status="done"   (final terminal state, after QA approval).
 
+Status transitions are enforced (ORCH-17): a task must pass through 'tested'
+before 'done'. Skipping the gate (e.g. in_progress -> done) is rejected. Add
+--force to any status-changing command (claim/mark-tested/mark-done) to override
+the guard. Unknown legacy statuses on existing tasks warn but never crash.
+
 Commands:
     python scripts/coordinator.py claim --task TASK_ID --model MODEL_NAME
 
@@ -47,6 +52,99 @@ from pathlib import Path
 ROOT          = Path(__file__).resolve().parent.parent
 TASKS_FILE    = ROOT / "tasks" / "active_tasks.json"
 CHECKPOINT_PY = Path(__file__).resolve().parent / "checkpoint.py"
+
+
+# ---------------------------------------------------------------------------
+# ORCH-17 — status state-machine (single source of truth).
+#
+# Mirrors the playground's scripts/tasks_io.py (VALID_STATUSES / VALID_PHASES /
+# ILLEGAL_STATUS_TRANSITIONS) so the synced copies converge. Statuses map to the
+# kanban: Backlog/Needs You -> In Progress -> Blocked -> Tested -> Done (plus
+# legacy/administrative states that appear in real task files).
+#
+# BACKWARD-COMPAT CONTRACT:
+#   * Real task files carry loose/legacy status + phase values. Unknown CURRENT
+#     statuses/phases WARN — they never crash a command.
+#   * Only transitions explicitly listed in ILLEGAL_STATUS_TRANSITIONS are hard
+#     rejected (chiefly: skipping the mandatory 'tested' gate before 'done').
+#   * Every guarded command accepts --force to override the rejection.
+# ---------------------------------------------------------------------------
+VALID_STATUSES = {
+    "backlog", "pending", "pending-owner", "in_progress", "blocked",
+    "tested", "done", "paused", "deferred", "cancelled", "partial",
+}
+
+VALID_PHASES = {
+    "queued", "claimed", "planning", "spec", "implementing", "testing",
+    "checkpoint", "checkpointed", "review", "qa", "blocked", "done",
+}
+
+# Transitions that are never legal regardless of workflow looseness.
+# The core rule: a task must pass through 'tested' (QA sign-off) before 'done'
+# per the Team Quality Rubric — so every direct *->done jump that skips 'tested'
+# is illegal.
+ILLEGAL_STATUS_TRANSITIONS = {
+    ("backlog", "done"),
+    ("pending", "done"),
+    ("pending-owner", "done"),
+    ("in_progress", "done"),
+    ("blocked", "done"),
+}
+
+
+def validate_phase(phase: str, force: bool = False) -> str | None:
+    """Return an error message if *phase* is not a known phase (None if OK/forced)."""
+    if phase in VALID_PHASES or force:
+        return None
+    return (
+        "Unknown phase '{}'. Known phases: {}.".format(
+            phase, ", ".join(sorted(VALID_PHASES)))
+    )
+
+
+def validate_status_transition(old: str, new: str) -> str | None:
+    """Return an error message if old->new is illegal (None if OK).
+
+    An empty/unknown *old* status is treated leniently (warned elsewhere, not
+    rejected here) so legacy task files never hard-fail. Only pairs explicitly
+    listed in ILLEGAL_STATUS_TRANSITIONS are rejected.
+    """
+    if new not in VALID_STATUSES:
+        return "Invalid target status '{}'. Valid statuses: {}.".format(
+            new, ", ".join(sorted(VALID_STATUSES)))
+    if (old, new) in ILLEGAL_STATUS_TRANSITIONS:
+        return (
+            "Illegal transition '{}' -> '{}' (tasks must pass through 'tested' "
+            "before 'done' per the Team Quality Rubric)".format(old, new)
+        )
+    return None
+
+
+def _enforce_status_transition(task: dict, new_status: str, force: bool) -> None:
+    """Guard a status change on *task*. Warn on legacy state, reject illegal jumps.
+
+    Backward-compat: an unknown CURRENT status only warns. An illegal transition
+    is rejected with exit(1) unless *force* is set (then it warns and proceeds).
+    """
+    task_id = task.get("task_id", "?")
+    old_status = task.get("status", "") or ""
+
+    if old_status and old_status not in VALID_STATUSES:
+        print(
+            "[WARN] Task '{}' has legacy/unknown current status '{}' — "
+            "proceeding without transition checks.".format(task_id, old_status),
+            file=sys.stderr,
+        )
+
+    err = validate_status_transition(old_status, new_status)
+    if err:
+        if force:
+            print("[WARN] --force overriding status guard: {}".format(err),
+                  file=sys.stderr)
+        else:
+            print("[ERROR] {}. Use --force to override.".format(err),
+                  file=sys.stderr)
+            sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +274,7 @@ def cmd_claim(args):
     """
     task_id = _get_flag(args, "--task")
     model   = _get_flag(args, "--model")
+    force   = "--force" in args  # ORCH-17
 
     if not task_id or not model:
         print("[ERROR] --task and --model are required", file=sys.stderr)
@@ -194,6 +293,7 @@ def cmd_claim(args):
             print("[ERROR] Task '{}' not found in active_tasks.json".format(task_id), file=sys.stderr)
             sys.exit(1)
 
+        _enforce_status_transition(task, "in_progress", force)  # ORCH-17
         task["status"] = "in_progress"
         task["preferred_provider"] = model
         task["phase"] = "claimed"
@@ -214,11 +314,19 @@ def cmd_update(args):
     task_id = _get_flag(args, "--task")
     phase   = _get_flag(args, "--phase")
     note    = _get_flag(args, "--note", required=False) or ""
+    force   = "--force" in args  # ORCH-17
 
     if not task_id or not phase:
         print("[ERROR] --task and --phase are required", file=sys.stderr)
         sys.exit(1)
     _validate_task_id(task_id)  # MAJOR-3
+
+    # ORCH-17: phase values are loose/legacy in real task files, so an unknown
+    # phase WARNS but never blocks (unlike the status transition guard).
+    phase_err = validate_phase(phase, force)
+    if phase_err:
+        print("[WARN] {} Proceeding (phases are advisory; use a known phase or "
+              "--force to silence).".format(phase_err), file=sys.stderr)
 
     # REL-2: acquire lock before read-modify-write cycle
     lock_path = Path(str(TASKS_FILE) + ".lock")
@@ -301,6 +409,7 @@ def cmd_mark_tested(args):
     """
     task_id     = _get_flag(args, "--task")
     result_path = _get_flag(args, "--result-path", required=False) or ""
+    force       = "--force" in args  # ORCH-17
 
     if not task_id:
         print("[ERROR] --task is required", file=sys.stderr)
@@ -319,6 +428,7 @@ def cmd_mark_tested(args):
             print("[ERROR] Task '{}' not found".format(task_id), file=sys.stderr)
             sys.exit(1)
 
+        _enforce_status_transition(task, "tested", force)  # ORCH-17
         task["status"] = "tested"
         task["phase"] = "done"
         task["completed_at"] = _timestamp()
@@ -356,6 +466,7 @@ def cmd_mark_done(args):
     Only call this AFTER a QA agent has signed off (i.e., after mark-tested).
     """
     task_id = _get_flag(args, "--task")
+    force   = "--force" in args  # ORCH-17
 
     if not task_id:
         print("[ERROR] --task is required", file=sys.stderr)
@@ -374,6 +485,9 @@ def cmd_mark_done(args):
             print("[ERROR] Task '{}' not found".format(task_id), file=sys.stderr)
             sys.exit(1)
 
+        # ORCH-17: enforce the 'tested' gate — in_progress/blocked/backlog/pending
+        # -> done is rejected unless --force. tested -> done is the legal path.
+        _enforce_status_transition(task, "done", force)
         task["status"] = "done"
         task["closed_at"] = _timestamp()
         _append_log_entry(task, "MARK-DONE (final terminal state)")
