@@ -34,6 +34,11 @@ cd multi-agent-orchestration
 # No pip install needed — pure Python stdlib
 ```
 
+> **Want it running 24/7?** Managed hosting (e.g. Railway) is the simplest default.
+> If you'd rather self-host on a VPS you control, there's an optional guide at
+> [docs/self-hosting-vps.md](docs/self-hosting-vps.md) with a `deploy/vps/` setup
+> script and systemd unit. No credentials or provisioning are included.
+
 ## Architecture
 
 ```
