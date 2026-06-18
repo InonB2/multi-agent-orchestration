@@ -141,6 +141,17 @@ The default. The framework routes tasks to agents who execute them via CLI tools
 type = "cli"
 ```
 
+**Non-interactive CLIs (`cli_exec_args`).** Some CLIs open an interactive UI unless you pass a subcommand. The framework runs `<cli> <cli_exec_args...> "<prompt>"` and always closes stdin. The most important case is the **OpenAI Codex CLI**: running `codex "<prompt>"` opens an interactive TUI that **hangs in automation** — so `codex.toml` sets `cli_exec_args = ["exec"]` to run it headless:
+
+```toml
+# config/agents/codex.toml
+[provider]
+type = "cli"
+cli_exec_args = ["exec"]   # -> runs `codex exec "<prompt>"` non-interactively
+```
+
+> Windows note: if Codex's built-in sandbox fails to spawn subprocesses (`windows sandbox: spawn setup refresh`), append `"--dangerously-bypass-approvals-and-sandbox"` to `cli_exec_args` for trusted repos.
+
 ### API mode — OpenAI-compatible
 
 For any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, Groq, Together AI, Ollama):

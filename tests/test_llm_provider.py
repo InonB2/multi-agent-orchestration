@@ -58,6 +58,17 @@ max_task_size   = "M"
 type = "cli"
 """
 
+CLI_EXEC_AGENT_TOML = """\
+[agent]
+name            = "testexec"
+preferred_model = "codex"
+max_task_size   = "M"
+
+[provider]
+type          = "cli"
+cli_exec_args = ["exec"]
+"""
+
 API_AGENT_TOML = """\
 [agent]
 name            = "testapi"
@@ -109,6 +120,7 @@ def cfg_dir(tmp_path, monkeypatch):
 
     (d / "_defaults.toml").write_text(DEFAULTS_TOML, encoding="utf-8")
     (d / "testcli.toml").write_text(CLI_AGENT_TOML, encoding="utf-8")
+    (d / "testexec.toml").write_text(CLI_EXEC_AGENT_TOML, encoding="utf-8")
     (d / "testapi.toml").write_text(API_AGENT_TOML, encoding="utf-8")
     (d / "testanth.toml").write_text(ANTHROPIC_AGENT_TOML, encoding="utf-8")
     (d / "nourl.toml").write_text(NO_URL_AGENT_TOML, encoding="utf-8")
@@ -254,6 +266,48 @@ def test_run_no_dry_run_cli_calls_subprocess(cfg_dir, monkeypatch, capsys):
     assert exc_info.value.code == 0
     assert invocations, "subprocess.run must be called in live mode"
     assert invocations[0][0] == "codex"
+
+
+def test_run_cli_exec_args_inserted_before_prompt(cfg_dir, monkeypatch, capsys):
+    """cli_exec_args must be inserted between the command and the prompt, so Codex
+    runs as `codex exec "<prompt>"` (non-interactive) rather than the hanging TUI."""
+    invocations = []
+    kwargs_seen = []
+
+    def fake_run(cmd, **kwargs):
+        invocations.append(cmd)
+        kwargs_seen.append(kwargs)
+        return type("R", (), {"stdout": "ok", "stderr": "", "returncode": 0})()
+
+    monkeypatch.setattr(lp.subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as exc_info:
+        args = argparse.Namespace(agent="testexec", prompt="work", dry_run=False)
+        lp.cmd_run(args)
+
+    assert exc_info.value.code == 0
+    assert invocations, "subprocess.run must be called in live mode"
+    # argv must be exactly [cli_cmd, *exec_args, prompt]
+    assert invocations[0] == ["codex", "exec", "work"]
+
+
+def test_run_cli_closes_stdin(cfg_dir, monkeypatch):
+    """The CLI runner must close stdin (DEVNULL) so exec-style CLIs don't hang
+    waiting on EOF when launched without a TTY."""
+    kwargs_seen = []
+
+    def fake_run(cmd, **kwargs):
+        kwargs_seen.append(kwargs)
+        return type("R", (), {"stdout": "", "stderr": "", "returncode": 0})()
+
+    monkeypatch.setattr(lp.subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit):
+        args = argparse.Namespace(agent="testexec", prompt="work", dry_run=False)
+        lp.cmd_run(args)
+
+    assert kwargs_seen, "subprocess.run must be called"
+    assert kwargs_seen[0].get("stdin") == lp.subprocess.DEVNULL
 
 
 # ---------------------------------------------------------------------------

@@ -29,6 +29,16 @@ report_path      = "agents/andy/inbox/"
 # "api" = call an OpenAI-compatible or Anthropic REST endpoint directly
 type = "cli"
 
+# For type = "cli": extra arguments inserted BETWEEN the CLI command and the
+# prompt, i.e. the process is run as: <cli_cmd> <cli_exec_args...> "<prompt>".
+# This is REQUIRED for non-interactive execution of CLIs that open an
+# interactive UI by default. The most important case is the OpenAI Codex CLI:
+# running `codex "<prompt>"` launches an interactive TUI that HANGS in
+# automation, so codex must be invoked as `codex exec "<prompt>"`.
+# The runner always closes stdin (no TTY) so exec-style CLIs do not block
+# waiting on input. Leave empty for CLIs that already run non-interactively.
+cli_exec_args = []
+
 # For type = "api": set these in your environment or per-agent override
 # api_base_url = "https://api.openai.com/v1"   # any OpenAI-compatible base URL
 # api_key_env_var = "OPENAI_API_KEY"            # env var holding the API key

@@ -112,7 +112,10 @@ def cmd_info(args) -> None:
 
     if ptype == "cli":
         cli_cmd = config.get("agent", {}).get("preferred_model", agent_name)
+        exec_args = provider.get("cli_exec_args", [])
         print("CLI tool:      {}".format(cli_cmd))
+        if exec_args:
+            print("CLI exec args: {}".format(" ".join(exec_args)))
 
     elif ptype == "api":
         api_base_url = provider.get("api_base_url")
@@ -172,14 +175,29 @@ def cmd_run(args) -> None:
     # ---- CLI mode ----
     if ptype == "cli":
         cli_cmd = config.get("agent", {}).get("preferred_model", agent_name)
-        print("CLI command: {} \"{}\"".format(cli_cmd, prompt))
+        # Args inserted between the command and the prompt, e.g. ["exec"] so
+        # Codex runs as `codex exec "<prompt>"` instead of opening its
+        # interactive TUI (which hangs in automation).
+        exec_args = provider.get("cli_exec_args", [])
+        if not isinstance(exec_args, list):
+            print(
+                "[ERROR] provider.cli_exec_args must be a list for agent '{}'.".format(agent_name),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        argv = [cli_cmd, *exec_args, prompt]
+        print("CLI command: {}".format(" ".join(argv[:-1]) + " \"{}\"".format(prompt)))
 
         if not dry_run:
             try:
                 result = subprocess.run(
-                    [cli_cmd, prompt],
+                    argv,
                     capture_output=True,
                     text=True,
+                    # Close stdin: exec-style CLIs (e.g. `codex exec`) read stdin
+                    # and block forever waiting on EOF when launched detached/
+                    # without a TTY. DEVNULL gives an immediate EOF.
+                    stdin=subprocess.DEVNULL,
                 )
                 if result.stdout:
                     print(result.stdout)
