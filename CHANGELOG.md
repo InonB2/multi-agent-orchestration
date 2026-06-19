@@ -4,7 +4,11 @@ All notable changes to this project will be documented here.
 
 ## [Unreleased]
 
+### Added
+- **Deployment guide (README):** "Local / Self-Host vs. VPS / Always-On" section — CLI-subscription vs metered-API billing model, the headless auth caveat (persistent session vs API mode), the one-shot-router reality (always-on = scheduled invocation, not a daemon), and a Local-vs-VPS comparison table. (#10)
+
 ### Fixed
+- **Codex CLI hung in automation (non-interactive execution).** The CLI provider ran `<cli> "<prompt>"` with stdin inherited; for the OpenAI Codex CLI this launched the interactive TUI (never `codex exec`) and blocked forever waiting on stdin EOF. Added `provider.cli_exec_args` (inserted between command and prompt; `codex.toml` now sets `["exec"]`) and made the runner always pass `stdin=subprocess.DEVNULL`. Documented in `_defaults.toml`, `codex.toml`, and the README, with a Windows sandbox note. Added regression tests (argv shape + stdin closed). (#11)
 - **Publish-readiness pass:** corrected docs/examples that did not match the code.
   - `examples/sample_active_tasks.json` now uses the canonical `{"tasks": [...]}` envelope (was a bare array that crashed the quickstart).
   - `task_router.py` now emits a clear error if `active_tasks.json` is not an object with a `tasks` array.
