@@ -9,6 +9,17 @@ preferred_model = "codex"
 qa_gate         = "jasmin"
 handoff_to      = "jasmin"
 
+[provider]
+type = "cli"
+# Codex MUST be run via its `exec` subcommand for non-interactive use. The bare
+# `codex "<prompt>"` opens an interactive TUI that hangs in automation (no TTY),
+# which looks like "codex stops working". `codex exec` runs headless with
+# approvals disabled by default.
+# Windows note: if the built-in sandbox fails to spawn child processes
+# (error: "windows sandbox: spawn setup refresh"), append
+# "--dangerously-bypass-approvals-and-sandbox" to this list for trusted repos.
+cli_exec_args = ["exec"]
+
 [task_types]
 accepts = ["implement", "unit test", "pr review", "single file", "patch", "refactor", "fix", "typescript", "python script"]
 rejects = ["multi-repo", "orchestrate", "design", "copywrite", "database schema", "security audit", "devops"]
