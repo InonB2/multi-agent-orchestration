@@ -84,6 +84,202 @@ python scripts/task_spec.py validate --task TASK-001
 python scripts/agent_config.py show --agent codex
 ```
 
+## Deployment: Local / Self-Host vs. VPS / Always-On
+
+
+The Multi-Agent Orchestration Framework (MMOI) orchestrates tasks across multiple AI CLI agents: **Antigravity** (`antigravity` via Gemini), **Codex** (`codex` via OpenAI), and **Claude Code** (`claude-code` via Anthropic). 
+
+Unlike traditional frameworks designed for API-metered integration, MMOI executes tasks in **CLI mode** by default. By driving these official command-line tools, MMOI routes execution through your personal flat-rate consumer subscriptions (such as Claude Pro, Gemini Advanced, or ChatGPT Plus), avoiding expensive per-token metered API costs. 
+
+Because task execution is coupled to authenticated CLI session states, choosing the right environment is crucial. This guide covers the two deployment options: **Local / Self-Host** on a workstation and **VPS / Always-On** headless servers.
+
+---
+
+### Task Queue Initialization (Required First Step)
+
+A fresh clone of the repository does not ship with the live task queue file, [active_tasks.json](tasks/active_tasks.json). Running MMOI scripts without this file will result in errors. Before executing any tasks, initialize the task queue by copying the shipped sample file:
+
+```bash
+cp examples/sample_active_tasks.json tasks/active_tasks.json
+```
+
+Alternatively, you can manually create [active_tasks.json](tasks/active_tasks.json) following the structure outlined in [quickstart.md](examples/quickstart.md).
+
+---
+
+### Option A - Local / Self-Host
+
+Running MMOI on a local development workstation is the most direct setup. Because a human desktop session exists, the underlying CLI tools can trigger interactive authentication prompts or launch browser-based OAuth redirect flows without issue.
+
+#### Prerequisites
+* **Python**: Version 3.8+ (stdlib only). Note that on Python versions below 3.11, the `tomli` package must be installed for TOML configuration parsing (see [scripts/config_loader.py](scripts/config_loader.py)).
+* **AI CLIs on PATH**:
+  * **Claude Code** (configured via [claude-code.toml](config/agents/claude-code.toml) as the CLI command `claude-code`)
+  * **Codex CLI** (configured via [codex.toml](config/agents/codex.toml) as the CLI command `codex`)
+  * **Antigravity CLI** (configured via [antigravity.toml](config/agents/antigravity.toml) as the CLI command `antigravity`)
+* **Active CLI Logins**: Verify you are logged into each CLI. Note that only the `codex` CLI exposes a standard login subcommand:
+  ```bash
+  codex login
+  ```
+  For `claude-code` and `antigravity`, ensure they are authenticated according to their vendor flow (e.g. interactive authentication or API key environment variable) before running the orchestrator.
+
+#### Workflow & Run Steps
+
+1. **Route Queue**: Scan [active_tasks.json](tasks/active_tasks.json) and assign pending tasks. The router uses a hardcoded keyword scoring algorithm defined in [task_router.py](scripts/task_router.py) (specifically defined in `ROUTING_RULES`) to assign the `preferred_provider`. The `[task_types]` configuration blocks in individual agent TOML files are metadata-only and do not affect the router.
+   ```bash
+   python scripts/task_router.py
+   ```
+2. **Write Pre-Task Spec**: For tasks with complexity `M`, `L`, or `XL`, draft an execution plan using [task_spec.py](scripts/task_spec.py):
+   ```bash
+   python scripts/task_spec.py create --task TASK-001 --done "Initial setup completed" --remaining "API handlers implementation" --next "Write core controllers" --criteria "Passes local unit tests"
+   ```
+   *Note: Creating a spec does not validate it. To check for completeness and validate required fields, run the separate `validate` subcommand:*
+   ```bash
+   python scripts/task_spec.py validate --task TASK-001
+   ```
+3. **Claim Task**: Update the task status to `in_progress` under the assigned agent configuration using [coordinator.py](scripts/coordinator.py):
+   ```bash
+   python scripts/coordinator.py claim --task TASK-001 --model codex
+   ```
+4. **Execute CLI Run**: Invoke task execution via the [llm_provider.py](scripts/llm_provider.py) script:
+   ```bash
+   python scripts/llm_provider.py run --agent codex --prompt "Build the endpoint with Zod schema validation."
+   ```
+5. **Mid-Task Checkpoints**: If you hit rate limits or need to hand off the work, save a checkpoint using [checkpoint.py](scripts/checkpoint.py):
+   ```bash
+   python scripts/checkpoint.py save --task TASK-001 --done "Database models defined" --remaining "Routing controllers" --next "Implement CRUD endpoints"
+   ```
+   *Note: The resume queue is handled in a runtime-generated, gitignored path at `tasks/queue/resume_queue.json`. You can list resumable checkpoints using:*
+   ```bash
+   python scripts/checkpoint.py list-resumable
+   ```
+   *After resuming a task, remove it from the resume queue:*
+   ```bash
+   python scripts/checkpoint.py mark-resumed --task TASK-001
+   ```
+6. **Complete & Sign-Off**: Run tests and record the output report's metadata path in the task's notes (note: `mark-tested` does not write the report file itself, it only records the string path in the task's notes):
+   ```bash
+   python scripts/coordinator.py mark-tested --task TASK-001 --result-path owner_inbox/task_001_result.md
+   ```
+   Next, mark the task as done. Task completion is guarded: tasks must pass through `tested` status before they can be marked `done` (unless the `--force` flag is used):
+   ```bash
+   python scripts/coordinator.py mark-done --task TASK-001
+   ```
+
+#### When to Use
+Choose this option for active pair-programming sessions during work hours, where you need immediate feedback, are making frequent edits, and are present to bypass occasional CLI interactive prompts.
+
+#### Pros & Cons
+* **Pros**:
+  * **Flat subscription cost**: Leverages existing consumer flat fees (zero per-token charges).
+  * **Simple OAuth**: Browser redirects and interactive MFA prompts are handled natively on your OS.
+  * **Zero sync delay**: State files and workspace directories reside locally.
+* **Cons**:
+  * **Workstation lock-up**: Subprocesses run locally, drawing system resources and command shells.
+  * **Not always-on**: Execution terminates if the workstation goes to sleep or is shut down.
+
+---
+
+### Option B - VPS / Always-On
+
+Deploying MMOI to a headless server (e.g., Hostinger VPS, DigitalOcean Droplet, or AWS EC2) allows agents to run continuously. However, because a headless Linux instance lacks a web browser for OAuth redirects, authenticating the CLI agents requires manual setup.
+
+#### Prerequisites
+* **Server**: A headless Linux server (Ubuntu 22.04 LTS or similar).
+* **Python**: Version 3.8+ (stdlib only; `tomli` required on Python versions < 3.11).
+* **AI CLIs on PATH**: Installed in the server environment.
+
+#### The Headless Authentication Caveat
+Headless execution of interactive desktop CLIs fails when they attempt to prompt for interactive logins or launch desktop web browsers. You must configure authentication using one of two strategies:
+
+##### Approach 1: Transplanted/Persistent Authenticated Sessions (Maintains Flat Subscription)
+Copy the logged-in workstation session cookies, credentials, and caches to the server's user home directory:
+* **Claude Code**: Copy the local config directory `~/.config/claude-code/` (Linux/Mac) or `%APPDATA%\claude-code\` (Windows) to `~/.config/claude-code/` on the VPS.
+* **Antigravity**: Copy `~/.gemini/antigravity-cli/` or equivalent gcloud auth configurations to the server.
+* **Codex**: Transplant `~/.config/openai/` or relevant credentials storage to the server.
+* *Note: CLI session tokens expire periodically. When they do, re-run login locally on your workstation and copy the updated folders back to the VPS.*
+
+##### Approach 2: Direct API Authorization (Metered Billing)
+Edit the agent's TOML files inside `config/agents/` to switch the provider type from `cli` to `api`, bypassing the CLI client entirely and calling REST endpoints directly. The framework base defaults in [_defaults.toml](config/agents/_defaults.toml) define the following `[provider]` schema keys for API mode:
+```toml
+[provider]
+type = "api"
+api_base_url = "https://api.openai.com/v1"   # OpenAI-compatible base URL
+api_key_env_var = "OPENAI_API_KEY"            # Env var holding the API key
+model_id = "gpt-4o"                            # Model identifier
+```
+The repository ships with working examples of API configuration:
+* [openai_agent.toml](config/agents/openai_agent.toml)
+* [anthropic_api.toml](config/agents/anthropic_api.toml)
+
+*Note: [codex.toml](config/agents/codex.toml) and [antigravity.toml](config/agents/antigravity.toml) do not contain a `[provider]` block by default and inherit `type = "cli"` from `_defaults.toml`. To configure them for API mode, add a `[provider]` block overriding these keys.*
+
+Export the required API key in your server environment:
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+Directly invoking APIs via [llm_provider.py](scripts/llm_provider.py) shifts billing from your flat consumer subscription to metered API token usage.
+
+#### Process Supervision & Automation
+
+> [!IMPORTANT]
+> **Orchestration Execution Model**
+> The [task_router.py](scripts/task_router.py) script is a **one-shot execution script**. It processes the task queue once and immediately exits; it is **not** a resident daemon/worker loop and does not perform active polling.
+
+Because the router is one-shot, the correct way to run MMOI "always-on" is to **invoke it on a schedule** — not to launch a long-lived process and expect it to poll.
+
+##### 1. Cron Scheduling (Recommended)
+Run the one-shot router on a periodic schedule (e.g. every 5 minutes) via system cron. This is the simplest and most robust always-on pattern: each tick processes the queue once and exits cleanly.
+```cron
+*/5 * * * * cd /opt/multi-agent-orchestration && python scripts/task_router.py >> /var/log/mmoi_router.log 2>&1
+```
+A `systemd` timer (a `.timer` + `.service` pair) achieves the same scheduled-invocation model if you prefer systemd over crontab. Either way, the unit of work is a single one-shot run per tick — there is no resident daemon in the shipped repo.
+
+##### 2. Managing Checkpoints
+When tasks are interrupted by rate limits, they are queued for resume in the runtime-generated, gitignored file `tasks/queue/resume_queue.json`. Operators can periodically view resumable tasks:
+```bash
+python scripts/checkpoint.py list-resumable
+```
+And once a task is resumed, mark it as resumed:
+```bash
+python scripts/checkpoint.py mark-resumed --task TASK-001
+```
+
+#### State-File Syncing (VPS ↔ Workstation)
+Because MMOI saves task states in local JSON files, updates [active_tasks.json](tasks/active_tasks.json), and writes checkpoints under `tasks/snapshots/`, you must sync these directories between your workstation and the VPS:
+* **Mutagen**: Real-time bi-directional directory sync:
+  ```bash
+  mutagen sync create --name=mmoi-vps ./local_workspace user@vps_ip:/opt/multi-agent-orchestration
+  ```
+* **rsync Cron Job**: One-way pull to download updated task states from the VPS output folder:
+  ```bash
+  rsync -avz user@vps_ip:/opt/multi-agent-orchestration/tasks/ ./tasks/
+  ```
+
+#### When to Use
+Ideal for complex, multi-agent pipelines with long-running research or development cycles that can run overnight without local intervention.
+
+#### Pros & Cons
+* **Pros**:
+  * **Background execution**: Tasks continue processing even when your workstation is shut down.
+  * **Offloaded performance**: Resource-heavy execution happens on remote compute.
+* **Cons**:
+  * **Fragile authentication**: Migrated CLI session files expire periodically and require manual refresh.
+  * **API token costs**: Utilizing API mode to avoid authentication maintenance results in metered charges.
+  * **Sync overhead**: Requires setting up folder synchronization systems.
+
+---
+
+### Comparison Summary
+
+| Feature | Option A: Local / Self-Host | Option B: VPS / Always-On |
+| :--- | :--- | :--- |
+| **Uptime** | ❌ Workstation must remain active | ✅ 24/7 background runner |
+| **Billing Type** | 💳 Flat consumer subscription | 💰 Subscription + VPS host cost (or Metered API) |
+| **Token Cost** | 💵 Free (Included in CLI subscriptions) | 🔄 Subscription (with sync) OR Metered API usage |
+| **Setup Complexity** | ⚡ Simple (Local commands + login) | 🛠️ Moderate (Session migration, cron/scheduled setup) |
+| **Best For** | Desktop pair-programming sessions | Overnight autonomous tasks, queue-based jobs |
+
 ## Scripts
 
 | Script | Purpose |
