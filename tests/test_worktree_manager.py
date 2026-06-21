@@ -66,6 +66,13 @@ def test_create_is_idempotent(repo):
     assert p1 == p2
 
 
+def test_create_existing_unregistered_dir_fails(repo):
+    path = wt.worktree_path("WT-2B")
+    path.mkdir(parents=True)
+    with pytest.raises(RuntimeError):
+        wt.create_worktree("WT-2B")
+
+
 def test_list_includes_new_worktree(repo):
     wt.create_worktree("WT-3")
     paths = [w.get("path", "") for w in wt.list_worktrees()]

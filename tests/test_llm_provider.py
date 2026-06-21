@@ -729,7 +729,7 @@ def test_agy_run_injects_term_xterm(cfg_dir, monkeypatch):
 
 
 def test_agy_run_no_effort_flag(cfg_dir, monkeypatch):
-    """agy has no reasoning-effort flag — only --model is appended."""
+    """agy has no reasoning-effort flag — only --model and --print are appended."""
     _write_ptme_agents(cfg_dir)
     invocations, _ = _capture_run(monkeypatch)
 
@@ -737,7 +737,7 @@ def test_agy_run_no_effort_flag(cfg_dir, monkeypatch):
         lp.cmd_run(argparse.Namespace(
             agent="testagy", prompt="work", dry_run=False, complexity="L"))
 
-    assert invocations[0] == ["agy", "--model", "gemini-3.1-pro", "work"]
+    assert invocations[0] == ["agy", "--model", "gemini-3.1-pro", "--print", "work"]
 
 
 # --- Case 1: backward compat — codex agents get NO env override -------------

@@ -97,6 +97,54 @@ def test_run_pool_rate_limit_triggers_cooldown():
     assert slept == [60]
 
 
+def test_run_pool_rate_limit_checkpoints_before_destroy_and_cooldown(tmp_path, monkeypatch):
+    events = []
+    worktree = tmp_path / "WT-RL"
+    worktree.mkdir()
+
+    def fake_create(task_id):
+        return worktree
+
+    def fake_destroy(task_id):
+        events.append(("destroy", task_id))
+        return True
+
+    def fake_checkpoint(task, result):
+        events.append(("checkpoint", task["task_id"], result["result_path"]))
+        return True
+
+    def fake_write_result(task_id, content):
+        path = tmp_path / "{}.md".format(task_id)
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def fake_run(cmd, **kwargs):
+        return type("R", (), {
+            "stdout": "",
+            "stderr": "Error: 429 Too Many Requests",
+            "returncode": 1,
+        })()
+
+    monkeypatch.setattr(ms.wt, "create_worktree", fake_create)
+    monkeypatch.setattr(ms.wt, "destroy_worktree", fake_destroy)
+    monkeypatch.setattr(ms, "checkpoint_rate_limited_task", fake_checkpoint)
+    monkeypatch.setattr(ms.ww, "write_result", fake_write_result)
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    results = ms.run_pool(
+        [{"task_id": "RL-1", "preferred_provider": "codex", "prompt": "work"}],
+        ms.default_runner,
+        max_workers=1,
+        cooldown_seconds=60,
+        sleep_fn=lambda seconds: events.append(("sleep", seconds)),
+    )
+
+    assert results[0]["status"] == "rate_limited"
+    assert [event[0] for event in events] == ["checkpoint", "destroy", "sleep"]
+    assert events[0][1] == "RL-1"
+    assert events[2][1] == 60
+
+
 def test_run_pool_no_cooldown_when_clean():
     slept = []
     ms.run_pool([{"task_id": "X"}], _ok_runner, max_workers=1,

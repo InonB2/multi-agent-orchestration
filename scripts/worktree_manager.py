@@ -93,11 +93,24 @@ def _resolve_base_ref(base_ref) -> str:
     return res.stdout.strip()
 
 
+def _registered_worktree_for(path: Path):
+    """Return the parsed worktree entry for *path*, or None if unregistered."""
+    target = str(path.resolve())
+    for entry in list_worktrees():
+        entry_path = entry.get("path")
+        if not entry_path:
+            continue
+        if str(Path(entry_path).resolve()) == target:
+            return entry
+    return None
+
+
 def create_worktree(task_id: str, base_ref=None) -> Path:
     """Create an isolated branch + worktree for *task_id*. Returns the worktree path.
 
-    Idempotency: if the worktree path already exists it is reused (returned as-is)
-    rather than failing, so a re-run of an interrupted batch does not error.
+    Idempotency: an existing path is reused only when git confirms it is the
+    registered worktree for this task's branch. A stale/manual directory at the
+    same path is rejected instead of being silently trusted.
     """
     _validate_task_id(task_id)
     WORKTREES_DIR.mkdir(parents=True, exist_ok=True)
@@ -105,6 +118,23 @@ def create_worktree(task_id: str, base_ref=None) -> Path:
     branch = branch_name(task_id)
 
     if path.exists():
+        registered = _registered_worktree_for(path)
+        if registered and registered.get("branch") == branch:
+            return path
+        actual_branch = registered.get("branch") if registered else "(unregistered)"
+        raise RuntimeError(
+            "existing path '{}' is not the registered worktree for branch '{}' "
+            "(found: {})".format(path, branch, actual_branch)
+        )
+
+    registered = _registered_worktree_for(path)
+    if registered:
+        if registered.get("branch") != branch:
+            raise RuntimeError(
+                "registered worktree '{}' belongs to branch '{}' not '{}'".format(
+                    path, registered.get("branch"), branch
+                )
+            )
         return path
 
     ref = _resolve_base_ref(base_ref)

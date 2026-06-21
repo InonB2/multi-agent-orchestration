@@ -188,6 +188,7 @@ def _assemble_cli_argv(cli_cmd, exec_args, model, effort, prompt):
     elif "agy" in cli_cmd_lower or "antigravity" in cli_cmd_lower:
         if model:
             argv.extend(["--model", model])
+            argv.append("--print")
         env_override = os.environ.copy()
         env_override["TERM"] = "xterm"
 

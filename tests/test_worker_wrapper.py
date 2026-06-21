@@ -25,7 +25,7 @@ def sandbox(tmp_path, monkeypatch):
 
 def test_result_path_is_deterministic(sandbox):
     p = ww.result_path("TASK-101")
-    assert p.name == "TASK-TASK-101_result.md"
+    assert p.name == "TASK-101_result.md"
     assert p.parent == sandbox.resolve()
 
 

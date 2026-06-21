@@ -14,10 +14,14 @@ One supervisor process owns a single model's partition of the task queue. It:
      orchestrator (Andy), including per-task status and the deterministic result
      path written by worker_wrapper.py.
 
+Andy contract: this supervisor is a pure delegating orchestrator. It selects,
+claims, dispatches, checkpoints worker state on interruptions, and aggregates
+results; it never performs the worker's specialist task itself.
+
 Rate-limit safety (plan §6): when a worker reports a rate-limit (non-zero exit +
-'rate limit' / '429' / 'quota' in its output) the supervisor checkpoints nothing
-itself but flags the task and runs a single pool-wide cool-down backoff, letting
-unaffected channels keep running.
+'rate limit' / '429' / 'quota' in its output) the supervisor saves a resumability
+checkpoint before worker cleanup, then runs a single pool-wide cool-down backoff,
+letting unaffected channels keep running.
 
 The execution seams (claimer / runner / sleep) are injectable so the pool logic is
 unit-testable without spawning real CLIs or git worktrees.
@@ -134,6 +138,7 @@ def default_runner(task: dict) -> dict:
         "returncode": None,
         "result_path": None,
         "rate_limited": False,
+        "checkpoint_saved": False,
         "detail": "",
     }
 
@@ -154,6 +159,7 @@ def default_runner(task: dict) -> dict:
         path = ww.write_result(task_id, combined)
         result["result_path"] = str(path)
         if result["rate_limited"]:
+            result["checkpoint_saved"] = checkpoint_rate_limited_task(task, result)
             result["status"] = "rate_limited"
         elif proc.returncode == 0:
             result["status"] = "ok"
@@ -167,6 +173,41 @@ def default_runner(task: dict) -> dict:
             wt.destroy_worktree(task_id)
 
     return result
+
+
+def checkpoint_rate_limited_task(task: dict, result: dict) -> bool:
+    """Save a resumability checkpoint for a rate-limited worker via coordinator.py.
+
+    This is intentionally a narrow supervisor-generated checkpoint: the worker's
+    exact domain progress is opaque to the orchestrator, so it records the saved
+    output path and enough context to resume the same task after the cooldown.
+    """
+    import subprocess  # local import keeps module import cheap for tests
+
+    task_id = task.get("task_id", "unknown")
+    model = task.get("preferred_provider", "unknown")
+    result_path = result.get("result_path") or "(no result path)"
+    done = "Saved partial worker output to {} before rate-limit cooldown.".format(result_path)
+    remaining = "Complete the remaining task work after the provider cooldown expires."
+    next_step = "Recreate the worker worktree and rerun task {} with model {}.".format(
+        task_id, model
+    )
+    proc = subprocess.run(
+        [
+            sys.executable, str(COORDINATOR), "checkpoint",
+            "--task", task_id,
+            "--done", done,
+            "--remaining", remaining,
+            "--next", next_step,
+            "--model", model,
+            "--interrupted-by", "rate_limit",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0 and proc.stderr:
+        print(proc.stderr.strip(), file=sys.stderr)
+    return proc.returncode == 0
 
 
 def run_pool(tasks, runner, max_workers=1, cooldown_seconds=RATE_LIMIT_COOLDOWN,
@@ -198,7 +239,7 @@ def run_pool(tasks, runner, max_workers=1, cooldown_seconds=RATE_LIMIT_COOLDOWN,
 
 def supervise(model, tasks_file=None, max_workers=None, runner=None,
               claimer=None, dry_run=False, sleep_fn=time.sleep) -> dict:
-    """Top-level ToT flow for one model: select -> claim -> run pool -> aggregate.
+    """Top-level Andy flow for one model: select -> claim -> dispatch -> aggregate.
 
     Returns an aggregate summary dict. `runner` and `claimer` default to the real
     subprocess-backed implementations but are injectable for tests.

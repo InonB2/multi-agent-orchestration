@@ -48,8 +48,10 @@ def result_path(task_id: str) -> Path:
     The resolved path is asserted to stay inside owner_inbox/ as a belt-and-
     suspenders guard against traversal even if the regex is ever loosened.
     """
-    _validate_task_id(task_id)
-    path = (OWNER_INBOX / "TASK-{}_result.md".format(task_id)).resolve()
+    normalized = _validate_task_id(task_id)
+    if normalized.startswith("TASK-"):
+        normalized = normalized[len("TASK-"):]
+    path = (OWNER_INBOX / "TASK-{}_result.md".format(normalized)).resolve()
     try:
         path.relative_to(OWNER_INBOX.resolve())
     except ValueError:
