@@ -84,6 +84,39 @@ python scripts/task_spec.py validate --task TASK-001
 python scripts/agent_config.py show --agent codex
 ```
 
+## Team-of-Teams (ToT) + Per-Task Model & Effort (PTME)
+
+Two additive, backward-compatible upgrades on top of the core loop:
+
+- **Per-Task Model & Effort (PTME)** — `llm_provider.py run` selects the model **and**
+  reasoning-effort level per task, by a clear precedence: CLI flags → per-task
+  overrides in `active_tasks.json` → complexity mapping (`S/M/L/XL`) in the agent
+  TOML → agent default → legacy bare binary. Codex gets `-m <model> -c
+  model_reasoning_effort="<effort>"`; `agy` gets `--model <slug>` with `TERM=xterm`.
+
+  ```bash
+  python scripts/llm_provider.py run --agent codex --task-id TASK-001 --prompt "..."
+  python scripts/llm_provider.py run --agent codex --complexity L --prompt "..." --dry-run
+  ```
+
+- **Team-of-Teams (ToT)** — a per-model *supervisor + worker pool*
+  ([`model_supervisor.py`](scripts/model_supervisor.py)) that selects its model's
+  tasks, claims them via a CAS-guarded `coordinator.py claim` (no double execution),
+  runs each worker in an isolated git worktree
+  ([`worktree_manager.py`](scripts/worktree_manager.py)), writes deterministic
+  results ([`worker_wrapper.py`](scripts/worker_wrapper.py)), and aggregates the
+  outcome. Concurrency caps: codex 3, antigravity 2, claude-code 1.
+
+  ```bash
+  python scripts/model_supervisor.py run --model codex --dry-run
+  scripts/unattended_loop.sh      # one route → supervise pass (cron/systemd-friendly)
+  ```
+
+Full guide, config keys, mapping table, and safety properties:
+**[docs/tot-ptme.md](docs/tot-ptme.md)**. For where to run it (local vs. headless
+VPS, with the reference `systemd` unit/timer under [`deploy/vps/`](deploy/vps/)), see
+the deployment section below.
+
 ## Deployment: Local / Self-Host vs. VPS / Always-On
 
 

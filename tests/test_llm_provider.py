@@ -518,3 +518,237 @@ def test_agent_config_list_with_malformed_toml(cfg_dir, capsys):
     # The broken agent should appear in the output with an ERROR marker
     assert "badagent" in out
     assert "ERROR" in out
+
+
+# ===========================================================================
+# PTME — Per-Task Model + Effort selection
+# (PER_MODEL_EFFORT_PLAN §6 required test cases 1–6)
+# ===========================================================================
+
+# A codex-style agent with complexity_mapping and a default model/effort (tier 4).
+CODEX_PTME_TOML = """\
+[agent]
+name            = "testcodex"
+preferred_model = "codex"
+max_task_size   = "XL"
+
+[provider]
+type          = "cli"
+cli_exec_args = ["exec"]
+model         = "gpt-default"
+effort        = "medium"
+
+[provider.complexity_mapping.L]
+model  = "gpt-5.5"
+effort = "high"
+"""
+
+# An agy-style agent whose binary (cli_cmd) differs from preferred_model.
+AGY_PTME_TOML = """\
+[agent]
+name            = "testagy"
+preferred_model = "antigravity"
+max_task_size   = "L"
+
+[provider]
+type    = "cli"
+cli_cmd = "agy"
+
+[provider.complexity_mapping.L]
+model  = "gemini-3.1-pro"
+effort = "high"
+"""
+
+
+def _write_ptme_agents(cfg_dir):
+    (cfg_dir / "testcodex.toml").write_text(CODEX_PTME_TOML, encoding="utf-8")
+    (cfg_dir / "testagy.toml").write_text(AGY_PTME_TOML, encoding="utf-8")
+
+
+def _capture_run(monkeypatch):
+    """Patch subprocess.run to capture argv + kwargs; returns the capture lists."""
+    invocations, kwargs_seen = [], []
+
+    def fake_run(cmd, **kwargs):
+        invocations.append(cmd)
+        kwargs_seen.append(kwargs)
+        return type("R", (), {"stdout": "ok", "stderr": "", "returncode": 0})()
+
+    monkeypatch.setattr(lp.subprocess, "run", fake_run)
+    return invocations, kwargs_seen
+
+
+# --- Case 6: Absent keys → legacy behavior (bare CLI binary) ----------------
+
+def test_resolve_absent_keys_returns_none():
+    """No CLI/task/complexity/default values → (None, None) (legacy argv)."""
+    model, effort = lp.resolve_model_effort({})
+    assert model is None and effort is None
+
+
+def test_run_absent_keys_legacy_argv(cfg_dir, monkeypatch):
+    """cmd_run with no PTME inputs yields the exact legacy argv (case 6)."""
+    _write_ptme_agents(cfg_dir)
+    invocations, _ = _capture_run(monkeypatch)
+
+    with pytest.raises(SystemExit) as exc:
+        # Namespace deliberately omits task_id/model/effort/complexity (case 1
+        # backward-compat: getattr must not raise AttributeError).
+        lp.cmd_run(argparse.Namespace(agent="testagy", prompt="work", dry_run=False))
+
+    assert exc.value.code == 0
+    # agy with no model resolved → bare binary + prompt (legacy).
+    assert invocations[0] == ["agy", "work"]
+
+
+# --- Case 5: Complexity mapping overrides default ---------------------------
+
+def test_resolve_complexity_overrides_default():
+    provider = {
+        "model": "gpt-default", "effort": "medium",
+        "complexity_mapping": {"L": {"model": "gpt-5.5", "effort": "high"}},
+    }
+    model, effort = lp.resolve_model_effort(provider, complexity="L")
+    assert model == "gpt-5.5"
+    assert effort == "high"
+
+
+def test_run_complexity_builds_codex_flags(cfg_dir, monkeypatch):
+    """Codex argv includes -m and -c model_reasoning_effort from complexity map."""
+    _write_ptme_agents(cfg_dir)
+    invocations, _ = _capture_run(monkeypatch)
+
+    with pytest.raises(SystemExit) as exc:
+        lp.cmd_run(argparse.Namespace(
+            agent="testcodex", prompt="work", dry_run=False, complexity="L"))
+
+    assert exc.value.code == 0
+    assert invocations[0] == [
+        "codex", "exec", "-m", "gpt-5.5",
+        "-c", 'model_reasoning_effort="high"', "work",
+    ]
+
+
+# --- Case 4: Task overrides complexity --------------------------------------
+
+def test_resolve_task_overrides_complexity():
+    provider = {"complexity_mapping": {"L": {"model": "gpt-5.5", "effort": "high"}}}
+    model, effort = lp.resolve_model_effort(
+        provider, task_model="task-model", task_effort="low", complexity="L")
+    assert model == "task-model"
+    assert effort == "low"
+
+
+def test_run_task_override_from_tasks_file(cfg_dir, tmp_path, monkeypatch):
+    """provider_model/provider_effort in active_tasks.json beat the complexity map."""
+    _write_ptme_agents(cfg_dir)
+    tasks_file = tmp_path / "active_tasks.json"
+    tasks_file.write_text(json.dumps({"tasks": [{
+        "task_id": "T-1", "complexity": "L",
+        "provider_model": "gpt-task", "provider_effort": "low",
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(lp, "TASKS_FILE", tasks_file)
+
+    invocations, _ = _capture_run(monkeypatch)
+    with pytest.raises(SystemExit):
+        lp.cmd_run(argparse.Namespace(
+            agent="testcodex", prompt="work", dry_run=False, task_id="T-1"))
+
+    # Task overrides win over the complexity 'L' mapping (gpt-5.5/high).
+    assert invocations[0] == [
+        "codex", "exec", "-m", "gpt-task",
+        "-c", 'model_reasoning_effort="low"', "work",
+    ]
+
+
+# --- Case 3: CLI overrides task ---------------------------------------------
+
+def test_resolve_cli_overrides_task():
+    model, effort = lp.resolve_model_effort(
+        {}, cli_model="cli-model", cli_effort="xhigh",
+        task_model="task-model", task_effort="low")
+    assert model == "cli-model"
+    assert effort == "xhigh"
+
+
+def test_run_cli_flags_override_tasks_file(cfg_dir, tmp_path, monkeypatch):
+    """--model/--effort beat both the tasks file and the complexity map."""
+    _write_ptme_agents(cfg_dir)
+    tasks_file = tmp_path / "active_tasks.json"
+    tasks_file.write_text(json.dumps({"tasks": [{
+        "task_id": "T-1", "complexity": "L",
+        "provider_model": "gpt-task", "provider_effort": "low",
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(lp, "TASKS_FILE", tasks_file)
+
+    invocations, _ = _capture_run(monkeypatch)
+    with pytest.raises(SystemExit):
+        lp.cmd_run(argparse.Namespace(
+            agent="testcodex", prompt="work", dry_run=False,
+            task_id="T-1", model="gpt-cli", effort="xhigh", complexity=None))
+
+    assert invocations[0] == [
+        "codex", "exec", "-m", "gpt-cli",
+        "-c", 'model_reasoning_effort="xhigh"', "work",
+    ]
+
+
+# --- Case 2: cli_cmd consistency across info / list / run -------------------
+
+def test_cli_cmd_consistent_across_commands(cfg_dir, monkeypatch, capsys):
+    """cli_cmd ('agy') must show in info + list and be the binary cmd_run invokes."""
+    _write_ptme_agents(cfg_dir)
+
+    lp.cmd_info(argparse.Namespace(agent="testagy"))
+    info_out = capsys.readouterr().out
+    assert "agy" in info_out
+
+    lp.cmd_list(argparse.Namespace())
+    list_out = capsys.readouterr().out
+    assert "agy" in list_out
+
+    invocations, _ = _capture_run(monkeypatch)
+    with pytest.raises(SystemExit):
+        lp.cmd_run(argparse.Namespace(
+            agent="testagy", prompt="work", dry_run=False, complexity="L"))
+    assert invocations[0][0] == "agy"
+
+
+def test_agy_run_injects_term_xterm(cfg_dir, monkeypatch):
+    """agy execution must inject TERM=xterm into the subprocess environment."""
+    _write_ptme_agents(cfg_dir)
+    _, kwargs_seen = _capture_run(monkeypatch)
+
+    with pytest.raises(SystemExit):
+        lp.cmd_run(argparse.Namespace(
+            agent="testagy", prompt="work", dry_run=False, complexity="L"))
+
+    env = kwargs_seen[0].get("env")
+    assert env is not None
+    assert env.get("TERM") == "xterm"
+
+
+def test_agy_run_no_effort_flag(cfg_dir, monkeypatch):
+    """agy has no reasoning-effort flag — only --model and --print are appended."""
+    _write_ptme_agents(cfg_dir)
+    invocations, _ = _capture_run(monkeypatch)
+
+    with pytest.raises(SystemExit):
+        lp.cmd_run(argparse.Namespace(
+            agent="testagy", prompt="work", dry_run=False, complexity="L"))
+
+    assert invocations[0] == ["agy", "--model", "gemini-3.1-pro", "--print", "work"]
+
+
+# --- Case 1: backward compat — codex agents get NO env override -------------
+
+def test_codex_run_no_env_override(cfg_dir, monkeypatch):
+    """Non-agy CLI agents must not receive an env kwarg (legacy behavior preserved)."""
+    _write_ptme_agents(cfg_dir)
+    _, kwargs_seen = _capture_run(monkeypatch)
+
+    with pytest.raises(SystemExit):
+        lp.cmd_run(argparse.Namespace(
+            agent="testcodex", prompt="work", dry_run=False, complexity="L"))
+
+    assert "env" not in kwargs_seen[0]

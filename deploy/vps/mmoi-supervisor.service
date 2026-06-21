@@ -1,0 +1,20 @@
+# mmoi-supervisor.service — oneshot unit run by mmoi-supervisor.timer.
+#
+# Runs a single PTME/ToT pass (route -> supervise each model). NO SECRETS in this
+# file: credentials come from the CLI login state under the service user's home,
+# or from an EnvironmentFile of API-key env-var NAMES that you create out of band
+# and keep gitignored. Adjust User / WorkingDirectory / paths to your VPS layout.
+[Unit]
+Description=MMOI Team-of-Teams supervisor pass (PTME)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=mmoi
+WorkingDirectory=/opt/multi-agent-orchestration
+Environment=TERM=xterm
+# Optional: a gitignored file of `KEY_NAME=value` lines (env-var NAMES only here).
+# EnvironmentFile=-/etc/mmoi/mmoi.env
+ExecStart=/opt/multi-agent-orchestration/scripts/unattended_loop.sh
+TimeoutStartSec=1800

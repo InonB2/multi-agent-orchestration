@@ -35,6 +35,10 @@ import config_loader as cl
 ROOT       = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config" / "agents"
 DEFAULTS   = CONFIG_DIR / "_defaults.toml"
+# PTME: repo-local task queue — the single source of truth for per-task
+# model/effort overrides looked up via `run --task-id`. Module-level so tests
+# can monkeypatch it (mirrors coordinator.py / task_router.py).
+TASKS_FILE = ROOT / "tasks" / "active_tasks.json"
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +86,116 @@ def _is_anthropic(base_url: str) -> bool:
     return "api.anthropic.com" in base_url
 
 
+def _resolve_cli_cmd(config: dict, agent_name: str) -> str:
+    """Resolve the CLI executable name for a cli-type provider.
+
+    Precedence: provider.cli_cmd  ->  agent.preferred_model  ->  agent_name.
+    Keeping this in one helper makes cmd_info, cmd_run and cmd_list resolve the
+    binary identically (PTME T-CODE-03).
+    """
+    provider = config.get("provider", {})
+    return provider.get("cli_cmd") or config.get("agent", {}).get("preferred_model", agent_name)
+
+
+def _load_task_overrides(task_id: str):
+    """Return (complexity, provider_model, provider_effort) for *task_id*.
+
+    Reads the repo-local TASKS_FILE. Any missing file / parse error / missing
+    task yields (None, None, None) and a non-fatal warning — per-task overrides
+    are optional context, never a hard dependency.
+    """
+    if not task_id:
+        return (None, None, None)
+    if not TASKS_FILE.exists():
+        return (None, None, None)
+    try:
+        with open(TASKS_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception as exc:  # noqa: BLE001 — best-effort context load
+        print(
+            "[WARNING] Failed to load/parse {}: {}".format(TASKS_FILE, exc),
+            file=sys.stderr,
+        )
+        return (None, None, None)
+
+    for task in data.get("tasks", []):
+        if task.get("task_id") == task_id:
+            return (
+                task.get("complexity"),
+                task.get("provider_model"),
+                task.get("provider_effort"),
+            )
+    return (None, None, None)
+
+
+def resolve_model_effort(
+    provider: dict,
+    cli_model=None,
+    cli_effort=None,
+    task_model=None,
+    task_effort=None,
+    complexity=None,
+):
+    """PTME selector: resolve (model, effort) for a task by 4-tier precedence.
+
+    1. Direct CLI overrides           (cli_model / cli_effort)
+    2. Per-task overrides             (task_model / task_effort from active_tasks.json)
+    3. Complexity mapping             (provider.complexity_mapping[<S|M|L|XL>])
+    4. Agent default                  (provider.model / provider.effort)
+
+    Each of model and effort is resolved independently, so a task may take its
+    model from one tier and its effort from another. Returns (model, effort),
+    either of which may be None when nothing in the chain supplies a value
+    (tier 5 — bare CLI binary, legacy behavior).
+    """
+    final_model = cli_model or task_model
+    final_effort = cli_effort or task_effort
+
+    mapping = provider.get("complexity_mapping", {})
+    if complexity and complexity in mapping:
+        mapped = mapping[complexity]
+        if not final_model:
+            final_model = mapped.get("model")
+        if not final_effort:
+            final_effort = mapped.get("effort")
+
+    if not final_model:
+        final_model = provider.get("model")
+    if not final_effort:
+        final_effort = provider.get("effort")
+
+    return (final_model, final_effort)
+
+
+def _assemble_cli_argv(cli_cmd, exec_args, model, effort, prompt):
+    """Build the subprocess argv + optional env override for a CLI provider.
+
+    Returns (argv, env_override). env_override is None unless the binary needs a
+    modified environment (agy → TERM=xterm to prevent headless hangs). Model and
+    effort flags are mapped per the confirmed CLI controls:
+      * codex: -m <model>  -c model_reasoning_effort="<effort>"
+      * agy:   --model <model>   (no effort flag — model slug carries the tier)
+    """
+    argv = [cli_cmd, *exec_args]
+    cli_cmd_lower = str(cli_cmd).lower()
+    env_override = None
+
+    if "codex" in cli_cmd_lower:
+        if model:
+            argv.extend(["-m", model])
+        if effort:
+            argv.extend(["-c", 'model_reasoning_effort="{}"'.format(effort)])
+    elif "agy" in cli_cmd_lower or "antigravity" in cli_cmd_lower:
+        if model:
+            argv.extend(["--model", model])
+            argv.append("--print")
+        env_override = os.environ.copy()
+        env_override["TERM"] = "xterm"
+
+    argv.append(prompt)
+    return (argv, env_override)
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -111,7 +225,7 @@ def cmd_info(args) -> None:
     print("Provider type: {}".format(ptype))
 
     if ptype == "cli":
-        cli_cmd = config.get("agent", {}).get("preferred_model", agent_name)
+        cli_cmd = _resolve_cli_cmd(config, agent_name)
         exec_args = provider.get("cli_exec_args", [])
         print("CLI tool:      {}".format(cli_cmd))
         if exec_args:
@@ -174,7 +288,8 @@ def cmd_run(args) -> None:
 
     # ---- CLI mode ----
     if ptype == "cli":
-        cli_cmd = config.get("agent", {}).get("preferred_model", agent_name)
+        # cli_cmd takes precedence over the legacy preferred_model fallback.
+        cli_cmd = _resolve_cli_cmd(config, agent_name)
         # Args inserted between the command and the prompt, e.g. ["exec"] so
         # Codex runs as `codex exec "<prompt>"` instead of opening its
         # interactive TUI (which hangs in automation).
@@ -185,20 +300,45 @@ def cmd_run(args) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-        argv = [cli_cmd, *exec_args, prompt]
+
+        # PTME: additive getattr reads so direct cmd_run() callers (existing
+        # tests build a Namespace without these attrs) never raise AttributeError.
+        arg_task_id    = getattr(args, "task_id", None)
+        arg_model      = getattr(args, "model", None)
+        arg_effort     = getattr(args, "effort", None)
+        arg_complexity = getattr(args, "complexity", None)
+
+        # Per-task overrides from the repo-local task queue (tier 2 + complexity).
+        task_complexity, task_model, task_effort = _load_task_overrides(arg_task_id)
+        resolved_complexity = arg_complexity or task_complexity
+
+        final_model, final_effort = resolve_model_effort(
+            provider,
+            cli_model=arg_model,
+            cli_effort=arg_effort,
+            task_model=task_model,
+            task_effort=task_effort,
+            complexity=resolved_complexity,
+        )
+
+        argv, env_override = _assemble_cli_argv(
+            cli_cmd, exec_args, final_model, final_effort, prompt
+        )
         print("CLI command: {}".format(" ".join(argv[:-1]) + " \"{}\"".format(prompt)))
 
         if not dry_run:
             try:
-                result = subprocess.run(
-                    argv,
-                    capture_output=True,
-                    text=True,
+                subprocess_kwargs = {
+                    "capture_output": True,
+                    "text": True,
                     # Close stdin: exec-style CLIs (e.g. `codex exec`) read stdin
                     # and block forever waiting on EOF when launched detached/
                     # without a TTY. DEVNULL gives an immediate EOF.
-                    stdin=subprocess.DEVNULL,
-                )
+                    "stdin": subprocess.DEVNULL,
+                }
+                if env_override is not None:
+                    subprocess_kwargs["env"] = env_override
+                result = subprocess.run(argv, **subprocess_kwargs)
                 if result.stdout:
                     print(result.stdout)
                 if result.stderr:
@@ -362,7 +502,7 @@ def cmd_list(args) -> None:
             ptype    = provider.get("type", "cli")
 
             if ptype == "cli":
-                cli_cmd = config.get("agent", {}).get("preferred_model", name)
+                cli_cmd = _resolve_cli_cmd(config, name)
                 detail  = "cli tool: {}".format(cli_cmd)
             elif ptype == "api":
                 model_id = provider.get("model_id", "?")
@@ -400,6 +540,11 @@ def main() -> None:
     p_run.add_argument("--prompt",  required=True, help="Task prompt text")
     p_run.add_argument("--dry-run", action="store_true",
                        help="Print what would be done without executing")
+    # PTME per-task model + effort selection (all optional, additive).
+    p_run.add_argument("--task-id", help="Task ID to load model/effort context from active_tasks.json")
+    p_run.add_argument("--model",   help="Direct override for the internal model slug")
+    p_run.add_argument("--effort",  help="Direct override for reasoning effort (low, medium, high, xhigh)")
+    p_run.add_argument("--complexity", help="Direct override for task complexity (S, M, L, XL)")
 
     # list
     sub.add_parser("list", help="List all agents and their provider types.")

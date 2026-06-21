@@ -5,9 +5,38 @@
 
 [agent]
 max_task_size   = "L"
-preferred_model = "antigravity"
+preferred_model = "antigravity"   # kept for backward compatibility (legacy label)
 qa_gate         = "tomy"
 handoff_to      = "yoni"
+
+[provider]
+type = "cli"
+# The Antigravity binary on PATH is `agy`, which differs from the logical model
+# label "antigravity". cli_cmd overrides the preferred_model fallback so the
+# runner spawns the correct executable. The runner also injects TERM=xterm into
+# the environment for `agy` to prevent headless terminal hangs (see
+# scripts/llm_provider.py). `agy` has no reasoning-effort flag — performance
+# class is selected purely through the model slug (Flash vs Pro).
+cli_cmd = "agy"
+
+# PTME complexity_mapping — for agy, effort is a logical hint only (no CLI flag);
+# the model slug (Flash for low/medium, Pro for high/xhigh) carries the tier.
+# Model slugs are ASSUMPTIONS pending live verification of the `agy` CLI.
+[provider.complexity_mapping.S]
+model  = "gemini-3.5-flash"
+effort = "low"
+
+[provider.complexity_mapping.M]
+model  = "gemini-3.5-flash"
+effort = "medium"
+
+[provider.complexity_mapping.L]
+model  = "gemini-3.1-pro"
+effort = "high"
+
+[provider.complexity_mapping.XL]
+model  = "gemini-3.1-pro"
+effort = "high"
 
 [task_types]
 accepts = ["research", "browser", "ui automation", "long document", "summarize", "analyze", "plan", "evaluate", "web search", "screenshot", "e2e"]
