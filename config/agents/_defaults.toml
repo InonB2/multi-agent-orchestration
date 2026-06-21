@@ -43,3 +43,23 @@ cli_exec_args = []
 # api_base_url = "https://api.openai.com/v1"   # any OpenAI-compatible base URL
 # api_key_env_var = "OPENAI_API_KEY"            # env var holding the API key
 # model_id = "gpt-4o"                            # model to use
+
+# --- PTME (Per-Task Model + Effort) keys — all optional and additive ---
+#
+# cli_cmd — override for the CLI executable name. If omitted, the runner falls
+# back to agent.preferred_model (legacy behavior). Use this when the binary on
+# PATH differs from the logical model name, e.g. preferred_model = "antigravity"
+# but the executable is "agy".
+# cli_cmd = "some-binary"
+#
+# model / effort — lowest-precedence (tier 4) default internal model slug and
+# reasoning effort for this agent, used when nothing higher resolves them.
+# model  = "model-slug"
+# effort = "medium"          # low | medium | high | xhigh
+#
+# complexity_mapping — map a task's complexity (S, M, L, XL) to an internal
+# model + effort. Tier 3 in the PTME resolver (below CLI flags and per-task
+# overrides in active_tasks.json, above the agent default model/effort above).
+# [provider.complexity_mapping.S]
+# model  = "model-slug"
+# effort = "low"

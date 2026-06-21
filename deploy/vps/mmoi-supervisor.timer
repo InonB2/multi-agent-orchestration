@@ -1,0 +1,19 @@
+# mmoi-supervisor.timer — triggers the MMOI supervisor pass every 5 minutes.
+#
+# Install (as root on the VPS):
+#   cp deploy/vps/mmoi-supervisor.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now mmoi-supervisor.timer
+#   systemctl list-timers mmoi-supervisor.timer
+[Unit]
+Description=Run the MMOI Team-of-Teams supervisor every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=mmoi-supervisor.service
+
+[Install]
+WantedBy=timers.target

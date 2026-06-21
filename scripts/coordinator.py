@@ -293,6 +293,22 @@ def cmd_claim(args):
             print("[ERROR] Task '{}' not found in active_tasks.json".format(task_id), file=sys.stderr)
             sys.exit(1)
 
+        # ToT CAS (Compare-and-Swap) guard: under the sidecar lock acquired above,
+        # atomically reject a claim if the task is already owned by another worker
+        # (status in_progress / tested / done). This closes the duplicate-execution
+        # hole where two concurrent supervisors/workers claim the same task.
+        # Backward-compatible: a "pending"/"backlog" task is not in the forbidden
+        # set, so existing claim flows (and tests) pass unchanged. --force overrides.
+        current_status = task.get("status", "") or ""
+        if current_status in ("in_progress", "tested", "done") and not force:
+            print(
+                "[ERROR] Task '{}' cannot be claimed: status is already '{}'.".format(
+                    task_id, current_status
+                ),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
         _enforce_status_transition(task, "in_progress", force)  # ORCH-17
         task["status"] = "in_progress"
         task["preferred_provider"] = model

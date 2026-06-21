@@ -19,6 +19,26 @@ type = "cli"
 # (error: "windows sandbox: spawn setup refresh"), append
 # "--dangerously-bypass-approvals-and-sandbox" to this list for trusted repos.
 cli_exec_args = ["exec"]
+# Omitted cli_cmd: falls back to agent.preferred_model ("codex").
+
+# PTME complexity_mapping — Codex model + reasoning effort per task complexity.
+# Resolved by scripts/llm_provider.py when a task's complexity (or --complexity)
+# is known and no higher-precedence override (CLI flag / task override) is set.
+[provider.complexity_mapping.S]
+model  = "gpt-5.4-mini"
+effort = "low"
+
+[provider.complexity_mapping.M]
+model  = "gpt-5.4"
+effort = "medium"
+
+[provider.complexity_mapping.L]
+model  = "gpt-5.5"
+effort = "high"
+
+[provider.complexity_mapping.XL]
+model  = "gpt-5.5"
+effort = "xhigh"
 
 [task_types]
 accepts = ["implement", "unit test", "pr review", "single file", "patch", "refactor", "fix", "typescript", "python script"]
