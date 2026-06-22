@@ -502,6 +502,14 @@ python scripts/task_spec.py create \
 
 This enforces clarity before execution and makes handoffs between models deterministic.
 
+## v2: Runtime Enforcement & Team-of-Teams
+
+V2 adds runtime tightening around the existing orchestration loop rather than a new platform layer. In shipped code, `model_supervisor.py run` now blocks `M`/`L`/`XL` tasks without a valid spec, reloads queued checkpoint context into the next worker prompt, and keeps a PTME audit trail in `logs/ptme_decisions.jsonl`. The per-model supervisor still claims tasks under a CAS guard, runs them in isolated worktrees, and aggregates deterministic result paths.
+
+V2 also adds tester identity tracking on `coordinator.py mark-tested`: when `--tested-by` is supplied, self-testing is rejected if that identity matches the worker/assignee unless `--force` is used. The branch also ships `model_supervisor.orchestrate_worker_plan(...)` as a tested local-orchestrator interface for multi-specialized worker specs, but that path is interface-only today; the default CLI supervisor still dispatches one worker per claimed task.
+
+Wiki: https://github.com/InonB2/multi-agent-orchestration/wiki/V2-Runtime-Enforcement
+
 ## License
 
 MIT — see [LICENSE](LICENSE)

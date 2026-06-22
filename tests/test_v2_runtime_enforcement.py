@@ -85,6 +85,27 @@ def test_mark_tested_rejects_same_tester_as_assignee(tmp_path, monkeypatch):
     assert task["status"] == "in_progress"
 
 
+def test_mark_tested_requires_non_empty_tester_identity(tmp_path, monkeypatch, capsys):
+    tasks_file = tmp_path / "active_tasks.json"
+    _write_tasks(tasks_file, [{
+        "task_id": "QA-SELF-0",
+        "title": "Runtime task",
+        "status": "in_progress",
+        "assigned_to": "codex",
+    }])
+    monkeypatch.setattr(co, "TASKS_FILE", tasks_file)
+    monkeypatch.setattr(co, "_run_checkpoint", lambda *args, **kwargs: 0)
+
+    with pytest.raises(SystemExit) as exc:
+        co.cmd_mark_tested(["--task", "QA-SELF-0"])
+
+    assert exc.value.code == 1
+    assert "--tested-by" in capsys.readouterr().err
+    task = json.loads(tasks_file.read_text(encoding="utf-8"))["tasks"][0]
+    assert task["status"] == "in_progress"
+    assert "tested_by" not in task
+
+
 def test_mark_tested_allows_independent_tester(tmp_path, monkeypatch):
     tasks_file = tmp_path / "active_tasks.json"
     _write_tasks(tasks_file, [{
@@ -105,6 +126,45 @@ def test_mark_tested_allows_independent_tester(tmp_path, monkeypatch):
     task = json.loads(tasks_file.read_text(encoding="utf-8"))["tasks"][0]
     assert task["status"] == "tested"
     assert task["tested_by"] == "agy"
+
+
+def test_mark_done_requires_recorded_tester_identity(tmp_path, monkeypatch, capsys):
+    tasks_file = tmp_path / "active_tasks.json"
+    _write_tasks(tasks_file, [{
+        "task_id": "QA-DONE-1",
+        "title": "Runtime task",
+        "status": "tested",
+        "assigned_to": "codex",
+        "tested_by": "",
+    }])
+    monkeypatch.setattr(co, "TASKS_FILE", tasks_file)
+
+    with pytest.raises(SystemExit) as exc:
+        co.cmd_mark_done(["--task", "QA-DONE-1"])
+
+    assert exc.value.code == 1
+    assert "tested_by" in capsys.readouterr().err
+    task = json.loads(tasks_file.read_text(encoding="utf-8"))["tasks"][0]
+    assert task["status"] == "tested"
+    assert "closed_at" not in task
+
+
+def test_mark_done_force_overrides_missing_tester_identity(tmp_path, monkeypatch):
+    tasks_file = tmp_path / "active_tasks.json"
+    _write_tasks(tasks_file, [{
+        "task_id": "QA-DONE-2",
+        "title": "Runtime task",
+        "status": "tested",
+        "assigned_to": "codex",
+        "tested_by": "",
+    }])
+    monkeypatch.setattr(co, "TASKS_FILE", tasks_file)
+
+    co.cmd_mark_done(["--task", "QA-DONE-2", "--force"])
+
+    task = json.loads(tasks_file.read_text(encoding="utf-8"))["tasks"][0]
+    assert task["status"] == "done"
+    assert task["closed_at"]
 
 
 def test_supervise_blocks_complex_task_without_spec(tmp_path, monkeypatch):

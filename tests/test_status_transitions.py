@@ -88,7 +88,7 @@ def test_mark_done_blocked_from_in_progress(tmp_path, monkeypatch):
 
 def test_mark_done_allowed_from_tested(tmp_path, monkeypatch):
     tf = _make_tasks_file(tmp_path, [
-        {"task_id": "GATE-002", "title": "t", "status": "tested"},
+        {"task_id": "GATE-002", "title": "t", "status": "tested", "tested_by": "qa-agent"},
     ])
     monkeypatch.setattr(co, "TASKS_FILE", tf)
 
