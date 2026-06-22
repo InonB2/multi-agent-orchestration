@@ -141,6 +141,50 @@ def _current_model(task: dict) -> str:
     return task.get("preferred_provider", task.get("assigned_to", "unknown"))
 
 
+def read_checkpoint(task_id: str):
+    """Return checkpoint JSON for *task_id*, or None when absent/corrupt."""
+    snap_path = _snapshot_path(task_id)
+    if not snap_path.exists():
+        return None
+    try:
+        return json.loads(snap_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def resume_queue_entry(task_id: str):
+    """Return the pending resume-queue entry for *task_id*, or None."""
+    for entry in _read_queue():
+        if entry.get("task_id") == task_id and not entry.get("resumed", False):
+            return entry
+    return None
+
+
+def load_resume_context(task_id: str):
+    """Return saved checkpoint context for a queued resumable task, or None."""
+    entry = resume_queue_entry(task_id)
+    if not entry:
+        return None
+
+    chk_rel = entry.get("checkpoint_path", "")
+    chk_path = (ROOT / chk_rel) if chk_rel else _snapshot_path(task_id)
+    try:
+        return json.loads(chk_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def mark_resumed(task_id: str) -> bool:
+    """Remove *task_id* from the resume queue. Returns True when removed."""
+    queue = _read_queue()
+    before_count = len(queue)
+    queue = [e for e in queue if e.get("task_id") != task_id]
+    if len(queue) == before_count:
+        return False
+    _write_queue(queue)
+    return True
+
+
 # Sentence-level signal words that indicate acceptance criteria.
 # Only sentences STARTING with these words are treated as criteria to avoid
 # false positives from words like "bypass" (pass), "password" (pass), "surpass" (pass),
@@ -240,11 +284,10 @@ def cmd_read(args):
         sys.exit(0)
 
     # EDGE-3: guard against corrupt checkpoint files instead of crashing
-    try:
-        data = json.loads(snap_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+    data = read_checkpoint(task_id)
+    if data is None:
         print(
-            "[ERROR] Checkpoint file is corrupt for task '{}': {}".format(task_id, exc),
+            "[ERROR] Checkpoint file is corrupt for task '{}'.".format(task_id),
             file=sys.stderr,
         )
         sys.exit(1)
@@ -282,14 +325,9 @@ def cmd_mark_resumed(args):
         sys.exit(1)
     _validate_task_id(task_id)  # MAJOR-3
 
-    queue = _read_queue()
-    before_count = len(queue)
-    queue = [e for e in queue if e.get("task_id") != task_id]
-
-    if len(queue) == before_count:
+    if not mark_resumed(task_id):
         print("[WARN] Task '{}' not found in resume queue.".format(task_id))
     else:
-        _write_queue(queue)
         print("[OK] Task '{}' removed from resume queue.".format(task_id))
 
 

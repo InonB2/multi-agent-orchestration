@@ -425,6 +425,7 @@ def cmd_mark_tested(args):
     """
     task_id     = _get_flag(args, "--task")
     result_path = _get_flag(args, "--result-path", required=False) or ""
+    tested_by   = _get_flag(args, "--tested-by", required=False) or ""
     force       = "--force" in args  # ORCH-17
 
     if not task_id:
@@ -444,10 +445,30 @@ def cmd_mark_tested(args):
             print("[ERROR] Task '{}' not found".format(task_id), file=sys.stderr)
             sys.exit(1)
 
+        tester_identity = (tested_by or task.get("tested_by", "") or "").strip()
+        worker_identities = {
+            (task.get("assigned_to", "") or "").strip(),
+            (task.get("preferred_provider", "") or "").strip(),
+        }
+        worker_identities.discard("")
+        if tester_identity and tester_identity in worker_identities:
+            msg = (
+                "Task '{}' cannot be marked tested by '{}': tester must differ "
+                "from the worker/assignee {}."
+            ).format(task_id, tester_identity, sorted(worker_identities))
+            if force:
+                print("[WARN] --force overriding tester guard: {}".format(msg),
+                      file=sys.stderr)
+            else:
+                print("[ERROR] {}".format(msg), file=sys.stderr)
+                sys.exit(1)
+
         _enforce_status_transition(task, "tested", force)  # ORCH-17
         task["status"] = "tested"
         task["phase"] = "done"
         task["completed_at"] = _timestamp()
+        if tester_identity:
+            task["tested_by"] = tester_identity
 
         if result_path:
             notes = task.get("notes", "") or ""

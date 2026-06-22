@@ -27,6 +27,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 # QA-1: Import shared utilities from config_loader instead of duplicating them
@@ -35,6 +36,7 @@ import config_loader as cl
 ROOT       = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config" / "agents"
 DEFAULTS   = CONFIG_DIR / "_defaults.toml"
+DECISION_LOG = ROOT / "logs" / "ptme_decisions.jsonl"
 # PTME: repo-local task queue — the single source of truth for per-task
 # model/effort overrides looked up via `run --task-id`. Module-level so tests
 # can monkeypatch it (mirrors coordinator.py / task_router.py).
@@ -165,6 +167,108 @@ def resolve_model_effort(
         final_effort = provider.get("effort")
 
     return (final_model, final_effort)
+
+
+def _recommended_model_effort(provider: dict, complexity=None):
+    """Return the PTME recommendation before overrides are applied."""
+    mapping = provider.get("complexity_mapping", {})
+    mapped = mapping.get(complexity, {}) if complexity else {}
+    recommended_model = mapped.get("model") or provider.get("model")
+    recommended_effort = mapped.get("effort") or provider.get("effort")
+    return (recommended_model, recommended_effort)
+
+
+def _decision_source(cli_value, task_value, mapped_value, default_value):
+    """Label which PTME tier supplied a resolved value."""
+    if cli_value:
+        return "cli_override"
+    if task_value:
+        return "task_override"
+    if mapped_value:
+        return "complexity_mapping"
+    if default_value:
+        return "provider_default"
+    return "unspecified"
+
+
+def append_decision_log(record: dict, log_path=None) -> Path:
+    """Append one structured PTME decision record to the JSONL audit log."""
+    path = Path(log_path) if log_path else DECISION_LOG
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return path
+
+
+def resolve_execution_profile(
+    agent_name: str,
+    config: dict | None = None,
+    cli_model=None,
+    cli_effort=None,
+    task_id=None,
+    complexity=None,
+    decided_by="llm_provider.cmd_run",
+    log_path=None,
+):
+    """Resolve PTME model/effort for an agent and append an audit-log record."""
+    config = config or _load_agent_config(agent_name)
+    provider = config.get("provider", {})
+    task_complexity, task_model, task_effort = _load_task_overrides(task_id)
+    resolved_complexity = complexity or task_complexity
+
+    mapping = provider.get("complexity_mapping", {})
+    mapped = mapping.get(resolved_complexity, {}) if resolved_complexity else {}
+    recommended_model, recommended_effort = _recommended_model_effort(
+        provider, resolved_complexity
+    )
+    final_model, final_effort = resolve_model_effort(
+        provider,
+        cli_model=cli_model,
+        cli_effort=cli_effort,
+        task_model=task_model,
+        task_effort=task_effort,
+        complexity=resolved_complexity,
+    )
+
+    model_source = _decision_source(
+        cli_model, task_model, mapped.get("model"), provider.get("model")
+    )
+    effort_source = _decision_source(
+        cli_effort, task_effort, mapped.get("effort"), provider.get("effort")
+    )
+    record = {
+        "task_id": task_id or "",
+        "complexity": resolved_complexity or "",
+        "recommended_model": recommended_model,
+        "recommended_effort": recommended_effort,
+        "decided_model": final_model,
+        "decided_effort": final_effort,
+        "decided_by": decided_by,
+        "decision_source": {
+            "model": model_source,
+            "effort": effort_source,
+        },
+        "reason": (
+            "PTME recommended model={} effort={}; resolved model={} via {} and "
+            "effort={} via {}."
+        ).format(
+            recommended_model or "(none)",
+            recommended_effort or "(none)",
+            final_model or "(none)",
+            model_source,
+            final_effort or "(none)",
+            effort_source,
+        ),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    append_decision_log(record, log_path=log_path)
+
+    return {
+        "complexity": resolved_complexity,
+        "model": final_model,
+        "effort": final_effort,
+        "decision": record,
+    }
 
 
 def _assemble_cli_argv(cli_cmd, exec_args, model, effort, prompt):
@@ -307,19 +411,17 @@ def cmd_run(args) -> None:
         arg_model      = getattr(args, "model", None)
         arg_effort     = getattr(args, "effort", None)
         arg_complexity = getattr(args, "complexity", None)
-
-        # Per-task overrides from the repo-local task queue (tier 2 + complexity).
-        task_complexity, task_model, task_effort = _load_task_overrides(arg_task_id)
-        resolved_complexity = arg_complexity or task_complexity
-
-        final_model, final_effort = resolve_model_effort(
-            provider,
+        profile = resolve_execution_profile(
+            agent_name,
+            config=config,
             cli_model=arg_model,
             cli_effort=arg_effort,
-            task_model=task_model,
-            task_effort=task_effort,
-            complexity=resolved_complexity,
+            task_id=arg_task_id,
+            complexity=arg_complexity,
+            decided_by="llm_provider.cmd_run",
         )
+        final_model = profile["model"]
+        final_effort = profile["effort"]
 
         argv, env_override = _assemble_cli_argv(
             cli_cmd, exec_args, final_model, final_effort, prompt
