@@ -43,6 +43,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import checkpoint as cp
+import llm_provider as lp
+import task_spec as ts
 import worktree_manager as wt
 import worker_wrapper as ww
 
@@ -88,6 +91,60 @@ def load_tasks(tasks_file=None) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _spec_gate_error(task: dict):
+    """Return a blocking spec-gate message for *task*, or None when runnable."""
+    complexity = (task.get("complexity", "") or "").upper()
+    if not ts.spec_required_for_complexity(complexity):
+        return None
+
+    task_id = task.get("task_id", "?")
+    errors = ts.spec_validation_errors(task_id)
+    if not errors:
+        return None
+    return (
+        "Task '{}' is complexity {} and cannot run without a valid spec: {}"
+    ).format(task_id, complexity, errors[0])
+
+
+def _build_worker_prompt(task: dict) -> str:
+    """Return the prompt for a worker, including checkpoint resume context."""
+    task_id = task.get("task_id", "unknown")
+    base_prompt = task.get("prompt") or task.get("title") or task_id
+    resume_context = task.get("resume_context")
+    if not resume_context:
+        return base_prompt
+
+    acceptance = resume_context.get("acceptance_criteria")
+    if isinstance(acceptance, list):
+        acceptance = "; ".join(str(item) for item in acceptance if str(item).strip())
+
+    return "\n".join([
+        "Resume the interrupted task using the checkpoint context below.",
+        "Task ID: {}".format(task_id),
+        "Completed so far: {}".format(resume_context.get("done", "")),
+        "Remaining work: {}".format(resume_context.get("remaining", "")),
+        "Exact next step: {}".format(resume_context.get("next_step", "")),
+        "Acceptance criteria: {}".format(acceptance or ""),
+        "",
+        "Original task prompt:",
+        base_prompt,
+    ]).strip()
+
+
+def _prepare_task_for_run(task: dict) -> dict:
+    """Return a runnable task copy with any checkpoint resume context loaded."""
+    prepared = dict(task)
+    task_id = prepared.get("task_id", "")
+    resume_context = cp.load_resume_context(task_id)
+    if resume_context:
+        prepared["resume_context"] = resume_context
+        prepared["prompt"] = _build_worker_prompt(prepared)
+        cp.mark_resumed(task_id)
+    else:
+        prepared["prompt"] = _build_worker_prompt(prepared)
+    return prepared
+
+
 def select_tasks(data: dict, model: str, statuses=CLAIMABLE_STATUSES) -> list:
     """Return tasks routed to *model* that are still claimable.
 
@@ -129,7 +186,7 @@ def default_runner(task: dict) -> dict:
     import subprocess  # local import — see default_claimer
     task_id = task.get("task_id", "unknown")
     model = task.get("preferred_provider", "claude-code")
-    prompt = task.get("prompt") or task.get("title") or task_id
+    prompt = _build_worker_prompt(task)
 
     result = {
         "task_id": task_id,
@@ -237,6 +294,46 @@ def run_pool(tasks, runner, max_workers=1, cooldown_seconds=RATE_LIMIT_COOLDOWN,
     return results
 
 
+def orchestrate_worker_plan(parent_task, worker_specs, dispatcher, max_workers=None,
+                            sleep_fn=time.sleep) -> dict:
+    """Interface-only local-orchestrator path for specialized sub-agent dispatch.
+
+    Each worker spec represents an isolated unit of work that the caller must run
+    in its own worktree/context. This function decides PTME model+effort, records
+    the decision log, and dispatches the worker specs in parallel via run_pool.
+    """
+    prepared_specs = []
+    decisions = []
+    for worker_spec in worker_specs:
+        spec = dict(worker_spec)
+        agent = spec.get("agent") or parent_task.get("preferred_provider") or \
+            parent_task.get("assigned_to")
+        profile = lp.resolve_execution_profile(
+            agent,
+            task_id=spec.get("task_id"),
+            complexity=spec.get("complexity"),
+            cli_model=spec.get("model"),
+            cli_effort=spec.get("effort"),
+            decided_by="model_supervisor.orchestrate_worker_plan",
+        )
+        spec["resolved_model"] = profile["model"]
+        spec["resolved_effort"] = profile["effort"]
+        spec["decision"] = profile["decision"]
+        spec["parent_task_id"] = parent_task.get("task_id", "")
+        prepared_specs.append(spec)
+        decisions.append(profile["decision"])
+
+    worker_count = max_workers if max_workers is not None else max(1, len(prepared_specs))
+    results = run_pool(prepared_specs, dispatcher, max_workers=worker_count, sleep_fn=sleep_fn)
+    return {
+        "parent_task_id": parent_task.get("task_id", ""),
+        "workers": [spec.get("task_id") for spec in prepared_specs],
+        "decisions": decisions,
+        "results": results,
+        "interface_only": True,
+    }
+
+
 def supervise(model, tasks_file=None, max_workers=None, runner=None,
               claimer=None, dry_run=False, sleep_fn=time.sleep) -> dict:
     """Top-level Andy flow for one model: select -> claim -> dispatch -> aggregate.
@@ -258,6 +355,8 @@ def supervise(model, tasks_file=None, max_workers=None, runner=None,
         "candidates": [t.get("task_id") for t in candidates],
         "claimed": [],
         "skipped_claim": [],
+        "blocked_spec": [],
+        "resumed": [],
         "results": [],
         "succeeded": 0,
         "failed": 0,
@@ -272,9 +371,19 @@ def supervise(model, tasks_file=None, max_workers=None, runner=None,
     claimed_tasks = []
     for task in candidates:
         task_id = task.get("task_id")
+        spec_gate_error = _spec_gate_error(task)
+        if spec_gate_error:
+            summary["blocked_spec"].append({
+                "task_id": task_id,
+                "reason": spec_gate_error,
+            })
+            continue
         if claimer(task_id, model):
             summary["claimed"].append(task_id)
-            claimed_tasks.append(task)
+            prepared_task = _prepare_task_for_run(task)
+            if prepared_task.get("resume_context"):
+                summary["resumed"].append(task_id)
+            claimed_tasks.append(prepared_task)
         else:
             summary["skipped_claim"].append(task_id)
 

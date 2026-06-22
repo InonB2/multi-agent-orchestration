@@ -73,8 +73,8 @@ python scripts/checkpoint.py list-resumable
 # Claim a task as a model
 python scripts/coordinator.py claim --task TASK-001 --model claude-code
 
-# Mark tested (QA sign-off), then mark done (final)
-python scripts/coordinator.py mark-tested --task TASK-001 --result-path output/task_001_result.md
+# Mark tested (QA sign-off by a different tester), then mark done (final)
+python scripts/coordinator.py mark-tested --task TASK-001 --tested-by agy --result-path output/task_001_result.md
 python scripts/coordinator.py mark-done --task TASK-001
 
 # Check if a task has a pre-task spec
@@ -93,6 +93,7 @@ Two additive, backward-compatible upgrades on top of the core loop:
   overrides in `active_tasks.json` → complexity mapping (`S/M/L/XL`) in the agent
   TOML → agent default → legacy bare binary. Codex gets `-m <model> -c
   model_reasoning_effort="<effort>"`; `agy` gets `--model <slug>` with `TERM=xterm`.
+  Each resolution appends one JSONL audit record to `logs/ptme_decisions.jsonl`.
 
   ```bash
   python scripts/llm_provider.py run --agent codex --task-id TASK-001 --prompt "..."
@@ -101,11 +102,14 @@ Two additive, backward-compatible upgrades on top of the core loop:
 
 - **Team-of-Teams (ToT)** — a per-model *supervisor + worker pool*
   ([`model_supervisor.py`](scripts/model_supervisor.py)) that selects its model's
-  tasks, claims them via a CAS-guarded `coordinator.py claim` (no double execution),
-  runs each worker in an isolated git worktree
+  tasks, blocks `M`/`L`/`XL` work without a valid spec, claims them via a CAS-guarded
+  `coordinator.py claim` (no double execution), reloads queued checkpoint context
+  before dispatch, runs each worker in an isolated git worktree
   ([`worktree_manager.py`](scripts/worktree_manager.py)), writes deterministic
   results ([`worker_wrapper.py`](scripts/worker_wrapper.py)), and aggregates the
-  outcome. Concurrency caps: codex 3, antigravity 2, claude-code 1.
+  outcome. Concurrency caps: codex 3, antigravity 2, claude-code 1. The specialized
+  multi-subagent local-orchestrator path is a tested interface today; the default
+  shipped CLI path still dispatches one worker per claimed task.
 
   ```bash
   python scripts/model_supervisor.py run --model codex --dry-run
@@ -162,7 +166,7 @@ Running MMOI on a local development workstation is the most direct setup. Becaus
    ```bash
    python scripts/task_router.py
    ```
-2. **Write Pre-Task Spec**: For tasks with complexity `M`, `L`, or `XL`, draft an execution plan using [task_spec.py](scripts/task_spec.py):
+2. **Write Pre-Task Spec**: For tasks with complexity `M`, `L`, or `XL`, draft an execution plan using [task_spec.py](scripts/task_spec.py). `model_supervisor.py run` blocks these tasks until `task_spec.py validate` passes; `S` tasks are exempt:
    ```bash
    python scripts/task_spec.py create --task TASK-001 --done "Initial setup completed" --remaining "API handlers implementation" --next "Write core controllers" --criteria "Passes local unit tests"
    ```
@@ -186,14 +190,15 @@ Running MMOI on a local development workstation is the most direct setup. Becaus
    ```bash
    python scripts/checkpoint.py list-resumable
    ```
-   *After resuming a task, remove it from the resume queue:*
+   *When a queued task is resumed through `model_supervisor.py`, the saved checkpoint is reloaded into the worker prompt and the queue entry is removed automatically. The manual command still exists for operator cleanup:*
    ```bash
    python scripts/checkpoint.py mark-resumed --task TASK-001
    ```
 6. **Complete & Sign-Off**: Run tests and record the output report's metadata path in the task's notes (note: `mark-tested` does not write the report file itself, it only records the string path in the task's notes):
    ```bash
-   python scripts/coordinator.py mark-tested --task TASK-001 --result-path owner_inbox/task_001_result.md
+   python scripts/coordinator.py mark-tested --task TASK-001 --tested-by agy --result-path owner_inbox/task_001_result.md
    ```
+   `mark-tested` rejects self-testing when `tested_by` matches the task's `assigned_to` or current worker model unless `--force` is used.
    Next, mark the task as done. Task completion is guarded: tasks must pass through `tested` status before they can be marked `done` (unless the `--force` flag is used):
    ```bash
    python scripts/coordinator.py mark-done --task TASK-001
@@ -269,11 +274,11 @@ Run the one-shot router on a periodic schedule (e.g. every 5 minutes) via system
 A `systemd` timer (a `.timer` + `.service` pair) achieves the same scheduled-invocation model if you prefer systemd over crontab. Either way, the unit of work is a single one-shot run per tick — there is no resident daemon in the shipped repo.
 
 ##### 2. Managing Checkpoints
-When tasks are interrupted by rate limits, they are queued for resume in the runtime-generated, gitignored file `tasks/queue/resume_queue.json`. Operators can periodically view resumable tasks:
+When tasks are interrupted by rate limits, they are queued for resume in the runtime-generated, gitignored file `tasks/queue/resume_queue.json`. The supervisor reloads that saved checkpoint context automatically before the next queued rerun. Operators can periodically view resumable tasks:
 ```bash
 python scripts/checkpoint.py list-resumable
 ```
-And once a task is resumed, mark it as resumed:
+The manual queue-clear command remains available:
 ```bash
 python scripts/checkpoint.py mark-resumed --task TASK-001
 ```
@@ -318,11 +323,11 @@ Ideal for complex, multi-agent pipelines with long-running research or developme
 | Script | Purpose |
 |--------|---------|
 | `task_router.py` | Routes tasks to claude-code, codex, or antigravity via keyword-heuristic scoring across three providers |
-| `checkpoint.py` | Saves mid-task state; appends to resume queue; marks resumed |
-| `coordinator.py` | Task lifecycle: claim → update → checkpoint → mark-tested → mark-done |
+| `checkpoint.py` | Saves mid-task state; appends to resume queue; exposes reload helpers for resumable work; marks resumed |
+| `coordinator.py` | Task lifecycle: claim → update → checkpoint → mark-tested → mark-done, including worker≠tester enforcement at `mark-tested` |
 | `task_spec.py` | Enforces pre-task specs for M/L/XL tasks before execution |
 | `agent_config.py` | Loads per-agent TOML config with project-level deep-merge overrides |
-| `llm_provider.py` | LLM-agnostic provider abstraction — CLI tools or direct API endpoints |
+| `llm_provider.py` | LLM-agnostic provider abstraction — CLI tools or direct API endpoints, plus PTME decision logging |
 
 ## Task Schema
 
@@ -348,9 +353,10 @@ Each task in `active_tasks.json` follows this structure:
 | `assigned_to` | Yes | agent name | Which agent owns this task |
 | `status` | Yes | `backlog`, `pending`, `in_progress`, `blocked`, `tested`, `done` | Current state (`tested` = QA-signed-off, set by `coordinator.py mark-tested`) |
 | `priority` | No | `high`, `medium`, `low` | Used for ordering |
-| `complexity` | No | `S`, `M`, `L`, `XL` | Used to decide if a spec is required |
+| `complexity` | No | `S`, `M`, `L`, `XL` | Used to decide if a spec is required before supervisor dispatch (`S` exempt) |
 | `preferred_provider` | No | provider name or `null` | Set by the router; null means unrouted |
 | `notes` | No | string | Free-text context |
+| `tested_by` | No | agent name | QA identity recorded by `mark-tested`; must differ from the worker/assignee unless `--force` is used |
 
 Status flow: `backlog → in_progress → tested → done` (or `blocked` on rate limit).
 
@@ -450,7 +456,7 @@ keyword choices, not an executed rule set. To change routing, edit the keyword l
 When a model hits its limit mid-task:
 1. Write a checkpoint with `checkpoint.py save`
 2. The task is queued in `tasks/queue/resume_queue.json`
-3. At the next session start, read the queue and re-dispatch
+3. At the next supervisor run, the queued checkpoint is reloaded into the worker prompt before re-dispatch
 
 ## Why not LangGraph or CrewAI?
 
@@ -495,6 +501,14 @@ python scripts/task_spec.py create \
 ```
 
 This enforces clarity before execution and makes handoffs between models deterministic.
+
+## v2: Runtime Enforcement & Team-of-Teams
+
+V2 adds runtime tightening around the existing orchestration loop rather than a new platform layer. In shipped code, `model_supervisor.py run` now blocks `M`/`L`/`XL` tasks without a valid spec, reloads queued checkpoint context into the next worker prompt, and keeps a PTME audit trail in `logs/ptme_decisions.jsonl`. The per-model supervisor still claims tasks under a CAS guard, runs them in isolated worktrees, and aggregates deterministic result paths.
+
+V2 also adds tester identity tracking on `coordinator.py mark-tested`: when `--tested-by` is supplied, self-testing is rejected if that identity matches the worker/assignee unless `--force` is used. The branch also ships `model_supervisor.orchestrate_worker_plan(...)` as a tested local-orchestrator interface for multi-specialized worker specs, but that path is interface-only today; the default CLI supervisor still dispatches one worker per claimed task.
+
+Wiki: https://github.com/InonB2/multi-agent-orchestration/wiki/V2-Runtime-Enforcement
 
 ## License
 

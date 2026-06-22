@@ -665,13 +665,14 @@ def test_coordinator_complete_sets_tested(tmp_path, monkeypatch):
     # Stub out the checkpoint subprocess so no real process is spawned
     monkeypatch.setattr(co, "_run_checkpoint", lambda *a, **kw: 0)
 
-    co.cmd_mark_tested(["--task", "CO-003"])
+    co.cmd_mark_tested(["--task", "CO-003", "--tested-by", "qa-agent"])
 
     updated = json.loads(tf.read_text(encoding="utf-8"))
     task = next(t for t in updated["tasks"] if t["task_id"] == "CO-003")
     assert task["status"] == "tested"
     assert task["phase"] == "done"
     assert "completed_at" in task
+    assert task["tested_by"] == "qa-agent"
 
 
 def test_coordinator_status_output(tmp_path, monkeypatch, capsys):

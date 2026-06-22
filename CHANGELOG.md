@@ -5,6 +5,12 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Added
+- **v2 runtime enforcement & team-of-teams (PTME):** `model_supervisor.py run` blocks `M`/`L`/`XL` tasks without a valid spec, reloads queued checkpoint context into the next worker prompt, and writes an audited PTME decision trail to `logs/ptme_decisions.jsonl`. Adds `model_supervisor.orchestrate_worker_plan(...)` as a tested local-orchestrator interface for multi-specialized workers (interface-only today; default CLI still dispatches one worker per task). See Wiki: V2-Runtime-Enforcement.
+
+### Security
+- **worker!=tester self-approval bypass fixed (fail-closed):** `coordinator.py mark-tested` now requires `--tested-by` and rejects self-testing; `mark-done` refuses a task with no recorded tester unless `--force`. Regression tests added (omitted-tester path must fail).
+
+### Added
 - **Deployment guide (README):** "Local / Self-Host vs. VPS / Always-On" section — CLI-subscription vs metered-API billing model, the headless auth caveat (persistent session vs API mode), the one-shot-router reality (always-on = scheduled invocation, not a daemon), and a Local-vs-VPS comparison table. (#10)
 
 ### Fixed

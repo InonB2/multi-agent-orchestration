@@ -21,7 +21,9 @@ section of the README — this page does not duplicate it.
 ### What it does
 
 `scripts/llm_provider.py run` now resolves, per task, **which internal model slug**
-and **which reasoning effort** to use, then assembles the correct CLI flags:
+and **which reasoning effort** to use, then assembles the correct CLI flags. Each
+resolution also appends a structured JSONL audit record to
+`logs/ptme_decisions.jsonl`:
 
 - **Codex**: `codex exec -m <model> -c model_reasoning_effort="<effort>" "<prompt>"`
 - **Antigravity (`agy`)**: `agy --model <model> "<prompt>"` with `TERM=xterm` injected
@@ -40,7 +42,8 @@ and **which reasoning effort** to use, then assembles the correct CLI flags:
 
 Model and effort resolve **independently**, so a task can take its model from one
 tier and its effort from another. The core selector is
-`llm_provider.resolve_model_effort(...)`.
+`llm_provider.resolve_model_effort(...)`; the runtime audit record is written by
+`llm_provider.resolve_execution_profile(...)`.
 
 ### Config keys (all optional / additive)
 
@@ -106,9 +109,11 @@ Orchestrator (Andy)
    ▼
 model_supervisor.py  (one per model: codex, antigravity, claude-code)
    │  1. select  — tasks where preferred_provider == <model> and still claimable
-   │  2. claim   — coordinator.py CAS claim (atomic, lock-guarded)
-   │  3. dispatch— ThreadPool of N workers (N = model's concurrency cap)
-   │  4. aggregate— per-task status + result path returned as one summary
+   │  2. spec gate — block M/L/XL tasks that fail task_spec validation
+   │  3. claim   — coordinator.py CAS claim (atomic, lock-guarded)
+   │  4. resume  — reload queued checkpoint context into the worker prompt
+   │  5. dispatch— ThreadPool of N workers (N = model's concurrency cap)
+   │  6. aggregate— per-task status + result path returned as one summary
    ▼
 worker (per task)
    ├─ worktree_manager.create_worktree(task_id)   # isolated branch + dir
@@ -121,10 +126,10 @@ worker (per task)
 
 | File | Role |
 | :--- | :--- |
-| `scripts/coordinator.py` | **CAS claim guard** — claiming an already `in_progress`/`tested`/`done` task is rejected (exit 1) under the file lock. Two concurrent claims → exactly one winner. `--force` overrides. |
+| `scripts/coordinator.py` | **CAS claim guard** — claiming an already `in_progress`/`tested`/`done` task is rejected (exit 1) under the file lock. Two concurrent claims → exactly one winner. `mark-tested` also rejects self-testing when `tested_by` matches the worker/assignee unless `--force` is used. |
 | `scripts/worktree_manager.py` | Create/destroy isolated git worktrees + temp branches (`worker/<task-id>`) from the current HEAD. Worktrees live in a sibling dir (`../mmoi-worktrees`, override with `MMOI_WORKTREES_DIR`) so the repo's git status stays clean. |
 | `scripts/worker_wrapper.py` | Deterministic, atomic result writeback to `owner_inbox/TASK-<id>_result.md`. Path-traversal guarded. |
-| `scripts/model_supervisor.py` | Select → claim → run pool → aggregate. Concurrency caps: codex 3, antigravity/agy 2, claude-code 1. Rate-limit (`429`/`quota`) triggers a pool cool-down. |
+| `scripts/model_supervisor.py` | Select → spec-gate → claim → checkpoint reload → run pool → aggregate. Concurrency caps: codex 3, antigravity/agy 2, claude-code 1. Rate-limit (`429`/`quota`) triggers a pool cool-down. |
 | `scripts/preflight_auth.py` | Sequential CLI auth warm-up before the parallel pool (avoids concurrent token-cache corruption). |
 
 ### Run it
@@ -148,13 +153,26 @@ powershell -ExecutionPolicy Bypass -File scripts\unattended_loop.ps1   # Windows
 ### Safety properties
 
 - **No double execution** — CAS claim under a cross-process file lock.
+- **Spec gate for complex work** — `M`/`L`/`XL` tasks do not run through the supervisor without a valid task spec.
 - **No cross-task contamination** — every worker has its own worktree (separate git
   index + working tree); spaces in paths are safe (git invoked via argv lists).
+- **Checkpoint resume context** — queued resumable work is reloaded into the next worker prompt instead of restarting cold.
 - **No result collisions** — deterministic per-task output filenames.
 - **Rate-limit aware** — pool cool-down on `429`/quota markers.
+- **PTME audit trail** — runtime model/effort decisions are persisted to `logs/ptme_decisions.jsonl`.
 - **No secrets in the repo** — scripts read env-var *names* only; the systemd unit
   and `run_agy_headless.sh` reference credentials out of band (CLI login state or a
   gitignored `EnvironmentFile`).
+
+### Local-orchestrator interface
+
+`model_supervisor.orchestrate_worker_plan(...)` is now a tested interface for a
+local "Andy" to decide PTME model+effort for multiple specialized sub-agents,
+record those decisions, and dispatch them in parallel through injected worker
+functions. What is real today: the decision logging, PTME resolution, and
+parallel dispatch interface. What remains interface-only: the default shipped CLI
+entrypoint still dispatches one worker per claimed task unless a higher-level
+caller provides an explicit worker plan.
 
 ### VPS / always-on
 
@@ -179,3 +197,5 @@ python -m pytest -q
 - `tests/test_worker_wrapper.py` — deterministic atomic writeback + traversal guard.
 - `tests/test_model_supervisor.py` — selection, sequential + parallel pool,
   aggregation, rate-limit cool-down.
+- `tests/test_v2_runtime_enforcement.py` — worker≠tester guard, spec-gate runtime block,
+  checkpoint auto-resume, PTME decision log write, local-orchestrator interface.

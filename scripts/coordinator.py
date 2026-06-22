@@ -12,7 +12,8 @@ Kanban flow: Backlog -> In Progress -> Blocked -> Tested -> Done
 Status transitions are enforced (ORCH-17): a task must pass through 'tested'
 before 'done'. Skipping the gate (e.g. in_progress -> done) is rejected. Add
 --force to any status-changing command (claim/mark-tested/mark-done) to override
-the guard. Unknown legacy statuses on existing tasks warn but never crash.
+the guard; on mark-done this also overrides a missing QA tester identity.
+Unknown legacy statuses on existing tasks warn but never crash.
 
 Commands:
     python scripts/coordinator.py claim --task TASK_ID --model MODEL_NAME
@@ -26,9 +27,10 @@ Commands:
         --next "exact next step"
 
     python scripts/coordinator.py mark-tested --task TASK_ID \\
-        --result-path path/to/output.md
+        --tested-by TESTER_IDENTITY \\
+        [--result-path path/to/output.md]
 
-    python scripts/coordinator.py mark-done --task TASK_ID
+    python scripts/coordinator.py mark-done --task TASK_ID [--force]
 
     python scripts/coordinator.py status --task TASK_ID
 
@@ -425,10 +427,17 @@ def cmd_mark_tested(args):
     """
     task_id     = _get_flag(args, "--task")
     result_path = _get_flag(args, "--result-path", required=False) or ""
+    tested_by   = (_get_flag(args, "--tested-by", required=False) or "").strip()
     force       = "--force" in args  # ORCH-17
 
     if not task_id:
         print("[ERROR] --task is required", file=sys.stderr)
+        sys.exit(1)
+    if not tested_by:
+        print(
+            "[ERROR] --tested-by is required and must be non-empty for mark-tested",
+            file=sys.stderr,
+        )
         sys.exit(1)
     _validate_task_id(task_id)  # MAJOR-3
 
@@ -444,10 +453,29 @@ def cmd_mark_tested(args):
             print("[ERROR] Task '{}' not found".format(task_id), file=sys.stderr)
             sys.exit(1)
 
+        tester_identity = tested_by
+        worker_identities = {
+            (task.get("assigned_to", "") or "").strip(),
+            (task.get("preferred_provider", "") or "").strip(),
+        }
+        worker_identities.discard("")
+        if tester_identity and tester_identity in worker_identities:
+            msg = (
+                "Task '{}' cannot be marked tested by '{}': tester must differ "
+                "from the worker/assignee {}."
+            ).format(task_id, tester_identity, sorted(worker_identities))
+            if force:
+                print("[WARN] --force overriding tester guard: {}".format(msg),
+                      file=sys.stderr)
+            else:
+                print("[ERROR] {}".format(msg), file=sys.stderr)
+                sys.exit(1)
+
         _enforce_status_transition(task, "tested", force)  # ORCH-17
         task["status"] = "tested"
         task["phase"] = "done"
         task["completed_at"] = _timestamp()
+        task["tested_by"] = tester_identity
 
         if result_path:
             notes = task.get("notes", "") or ""
@@ -480,6 +508,7 @@ def cmd_mark_done(args):
 
     Kanban flow: Tested -> Done.
     Only call this AFTER a QA agent has signed off (i.e., after mark-tested).
+    Requires a recorded non-empty tested_by unless --force is supplied.
     """
     task_id = _get_flag(args, "--task")
     force   = "--force" in args  # ORCH-17
@@ -500,6 +529,19 @@ def cmd_mark_done(args):
         if task is None:
             print("[ERROR] Task '{}' not found".format(task_id), file=sys.stderr)
             sys.exit(1)
+
+        tester_identity = (task.get("tested_by", "") or "").strip()
+        if not tester_identity:
+            msg = (
+                "Task '{}' cannot be marked done without a non-empty tested_by. "
+                "Use mark-tested --tested-by <tester> first or pass --force."
+            ).format(task_id)
+            if force:
+                print("[WARN] --force overriding done gate: {}".format(msg),
+                      file=sys.stderr)
+            else:
+                print("[ERROR] {}".format(msg), file=sys.stderr)
+                sys.exit(1)
 
         # ORCH-17: enforce the 'tested' gate — in_progress/blocked/backlog/pending
         # -> done is rejected unless --force. tested -> done is the legal path.

@@ -102,6 +102,41 @@ def parse_criteria(raw: str) -> list[str]:
     return [c.strip() for c in raw.split(",") if c.strip()]
 
 
+def spec_required_for_complexity(complexity: str) -> bool:
+    """True when *complexity* requires a pre-task spec at runtime."""
+    return (complexity or "").upper() in COMPLEX_SIZES
+
+
+def spec_validation_errors(task_id: str) -> list[str]:
+    """Return spec validation errors for *task_id* without exiting."""
+    dest = spec_path(task_id)
+
+    if not dest.exists():
+        return ["No spec file found for task '{}'.".format(task_id)]
+
+    try:
+        spec = json.loads(dest.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return ["Spec file is not valid JSON: {}".format(exc)]
+
+    errors = []
+
+    for field in REQUIRED_FIELDS:
+        if field not in spec:
+            errors.append("Missing required field: '{}'".format(field))
+
+    for field in REQUIRED_CONTENT_FIELDS:
+        val = spec.get(field)
+        if val is None:
+            continue
+        if isinstance(val, str) and not val.strip():
+            errors.append("Field '{}' is empty.".format(field))
+        elif isinstance(val, list) and len(val) == 0:
+            errors.append("Field '{}' (list) is empty.".format(field))
+
+    return errors
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -170,34 +205,7 @@ def cmd_read(args):
 
 def cmd_validate(args):
     task_id = args.task
-    dest = spec_path(task_id)
-
-    if not dest.exists():
-        print("[FAIL] No spec file found for task '{}'.".format(task_id))
-        sys.exit(2)
-
-    try:
-        spec = json.loads(dest.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        print("[FAIL] Spec file is not valid JSON: {}".format(exc))
-        sys.exit(2)
-
-    errors = []
-
-    # Check all required fields are present
-    for field in REQUIRED_FIELDS:
-        if field not in spec:
-            errors.append("Missing required field: '{}'".format(field))
-
-    # Check content fields are non-empty
-    for field in REQUIRED_CONTENT_FIELDS:
-        val = spec.get(field)
-        if val is None:
-            continue  # already caught by missing-field check
-        if isinstance(val, str) and not val.strip():
-            errors.append("Field '{}' is empty.".format(field))
-        elif isinstance(val, list) and len(val) == 0:
-            errors.append("Field '{}' (list) is empty.".format(field))
+    errors = spec_validation_errors(task_id)
 
     if errors:
         print("[FAIL] Spec validation errors for '{}':\n".format(task_id))
@@ -205,6 +213,7 @@ def cmd_validate(args):
             print("  - {}".format(err))
         sys.exit(2)
 
+    spec = json.loads(spec_path(task_id).read_text(encoding="utf-8"))
     print("[PASS] Spec for '{}' is valid. ({} fields present)".format(
         task_id, len(spec)
     ))
