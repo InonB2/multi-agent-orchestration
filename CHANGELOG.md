@@ -5,6 +5,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Added
+- **Agent Dashboard (`dashboard/`):** a single-file, zero-dependency UI for watching the multi-engine agent team — orchestrator header cards, running specialist agents grouped by engine team, an in-flight task ledger, and a per-task model/effort view. Opens directly on `file://` (no server, no build); reads live feeds as `window.*` globals injected by `<script>` tags rather than `fetch()`. Ships with the live-feed producers (`scripts/agent_activity.py`, `dispatch_worker.py`, `orchestrator_stats.py`, `codex_usage.py`, `rate_wall_watchdog.py`, `sub_orchestrator.py`, `ptme.py`, `build_analytics.py`) and seeded idle sample feeds so it renders out-of-the-box. Documents the dispatch → sub-orchestrator → PTME flow and the rate-wall watchdog in `dashboard/README.md`, with an honest **known-limitations / roadmap**: analytics aggregation, PTME model-vs-engine scoping, and the learning loop are a **v0/preview** with data-integrity hardening in progress. Sanitization: seed roster genericized to role-based ids; `build_analytics.py` now emits repo-relative source paths (no machine paths in `analytics_data.js`).
 - **Deployment guide (README):** "Local / Self-Host vs. VPS / Always-On" section — CLI-subscription vs metered-API billing model, the headless auth caveat (persistent session vs API mode), the one-shot-router reality (always-on = scheduled invocation, not a daemon), and a Local-vs-VPS comparison table. (#10)
 
 ### Fixed

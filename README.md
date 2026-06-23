@@ -117,6 +117,24 @@ Full guide, config keys, mapping table, and safety properties:
 VPS, with the reference `systemd` unit/timer under [`deploy/vps/`](deploy/vps/)), see
 the deployment section below.
 
+## Agent Dashboard
+
+A zero-dependency, single-file dashboard for watching the team work in real
+time: the four orchestrator cards, which specialist agents are running, the
+in-flight task ledger, and the per-task model/effort each dispatch chose.
+
+Open [`dashboard/index.html`](dashboard/index.html) directly in a browser — no
+server, no build step. It reads live feeds as `window.*` globals written by the
+producers in [`scripts/`](scripts) (`agent_activity.py`, `dispatch_worker.py`,
+`orchestrator_stats.py`, `build_analytics.py`, `sub_orchestrator.py`,
+`rate_wall_watchdog.py`, `ptme.py`, `codex_usage.py`). The shipped feeds are
+seeded idle so the page renders out-of-the-box.
+
+Setup, the dispatch → sub-orchestrator → PTME flow, the rate-wall watchdog, and
+an honest **known-limitations / roadmap** (analytics aggregation, PTME
+model-vs-engine scoping, and the learning loop are a hardening-in-progress
+**v0/preview**) are documented in **[dashboard/README.md](dashboard/README.md)**.
+
 ## Deployment: Local / Self-Host vs. VPS / Always-On
 
 

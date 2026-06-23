@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MMOI — Agent Orchestration Dashboard</title>
+<style>
+  :root{
+    --bg:#0a0e16;--surface:#0f1420;--surface2:#141b29;--surface3:#1b2333;
+    --border:#28324a;--text:#e7edf7;--text-secondary:#9fb0cc;--muted:#5f7290;
+    --cyan:#22d3ee;--green:#34d399;--yellow:#facc15;--red:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:radial-gradient(1200px 700px at 80% -10%,rgba(34,211,238,0.06),transparent),var(--bg);
+    color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.5;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 60px}
+  header.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:8px}
+  .title{font-size:26px;font-weight:800;letter-spacing:-0.01em}
+  .title small{display:block;font-size:12px;font-weight:500;color:var(--text-secondary);letter-spacing:.04em;margin-top:4px}
+  .live-pill{display:inline-flex;align-items:center;gap:8px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--text-secondary);background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:7px 14px}
+  .live-dot{width:8px;height:8px;border-radius:999px;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .meta-line{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',ui-monospace,monospace;margin:10px 0 24px}
+
+  /* orchestrator header */
+  .orch-header{margin-top:4px;margin-bottom:24px}
+  .orch-header-empty{margin:4px 0 18px;padding:16px;border:1px dashed var(--border);border-radius:14px;color:var(--muted);font-size:12px}
+  .orch-header-label{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .orch-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  @media(max-width:1100px){.orch-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:620px){.orch-grid{grid-template-columns:1fr}}
+  .orch-card{position:relative;border:1px solid var(--border);border-radius:14px;padding:13px 14px;background:linear-gradient(180deg,rgba(255,255,255,0.025),rgba(255,255,255,0));display:flex;flex-direction:column;gap:10px}
+  .orch-card-active{border-color:rgba(52,211,153,0.4);box-shadow:0 0 0 1px rgba(52,211,153,0.12),0 8px 24px rgba(0,0,0,0.25)}
+  .orch-name{font-size:18px;font-weight:700;color:var(--text);line-height:1.1}
+  .orch-usage{display:flex;align-items:center;gap:12px}
+  .orch-usage-text{display:flex;flex-direction:column}
+  .orch-usage-big{font-size:24px;font-weight:800;color:var(--text);line-height:1}
+  .orch-usage-null .orch-usage-big{color:var(--muted)}
+  .orch-usage-cap{font-size:10px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
+  .orch-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .orch-stat{display:flex;flex-direction:column;align-items:flex-start;padding:8px 9px;background:var(--surface3);border:1px solid var(--border);border-radius:10px}
+  .orch-stat-run{border-color:rgba(52,211,153,0.4);background:rgba(52,211,153,0.10)}
+  .orch-stat-v{font-size:18px;font-weight:800;color:var(--text);line-height:1}
+  .orch-stat-run .orch-stat-v{color:var(--green)}
+  .orch-stat-l{font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;margin-top:3px}
+
+  /* section */
+  .section{margin-top:28px}
+  .section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+  .section-title{font-size:20px;font-weight:700}
+  .section-sub{font-size:12px;color:var(--text-secondary);margin-top:3px}
+  .section-key{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+
+  /* live tasks */
+  .lt-scroll{display:flex;flex-direction:column;gap:7px;max-height:420px;overflow-y:auto;padding-right:4px}
+  .lt-row{border:1px solid rgba(76,211,255,0.14);border-radius:12px;background:rgba(7,18,31,0.6)}
+  .lt-row.lt-running{border-color:rgba(56,189,248,0.32)}
+  .lt-head{width:100%;display:grid;grid-template-columns:130px 1fr 90px 100px 70px;gap:10px;align-items:center;padding:11px 13px}
+  .lt-id{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--cyan);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lt-worker{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lt-worker small{color:var(--text-secondary)}
+  .lt-status{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .lt-status-running{color:var(--cyan)}.lt-status-done{color:var(--green)}.lt-status-other{color:var(--text-secondary)}
+  .lt-when{font-size:11px;color:var(--text-secondary);text-align:right}
+  .lt-trend{justify-self:end;display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .lt-trend-run{border:1px solid rgba(56,189,248,0.35);background:rgba(34,211,238,0.12);color:var(--cyan)}
+  .lt-trend-done{border:1px solid rgba(52,211,153,0.3);background:rgba(52,211,153,0.10);color:var(--green)}
+  @media(max-width:760px){.lt-head{grid-template-columns:1fr 70px}.lt-id,.lt-when{display:none}}
+
+  /* team cards */
+  .team{margin-top:18px}
+  .team-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:12px}
+  .team-name{font-size:17px;font-weight:700}
+  .team-sub{font-size:12px;color:var(--text-secondary);margin-top:3px}
+  .ag-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+  .ag-card{border:1px solid var(--border);border-radius:12px;padding:11px 12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0));transition:opacity .15s ease}
+  .ag-card.ag-run{border-color:rgba(52,211,153,0.24);background:linear-gradient(180deg,rgba(52,211,153,0.08),rgba(255,255,255,0.01))}
+  .ag-card.ag-idle{opacity:.5}
+  .ag-top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+  .ag-role{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ag-id{margin-top:2px;font-size:10px;color:var(--text-secondary)}
+  .ag-dot{flex:none;width:8px;height:8px;border-radius:999px}
+  .ag-task{margin-top:8px;font-size:11px;line-height:1.45;min-height:30px}
+  .ag-foot{margin-top:8px;display:flex;justify-content:space-between;gap:8px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--text-secondary)}
+  .idle-note{padding:14px;border:1px dashed var(--border);border-radius:12px;color:var(--muted);font-size:12px}
+  .idle-pills{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+  .idle-pill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:var(--surface3);border:1px solid var(--border);font-size:11px;color:var(--text-secondary)}
+
+  /* analytics */
+  .an-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+  .an-card{padding:14px 15px;background:var(--surface2);border:1px solid var(--border);border-radius:12px}
+  .an-v{font-size:24px;font-weight:800}
+  .an-l{margin-top:5px;font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em}
+  .footnote{margin-top:36px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);line-height:1.7}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.9em;color:var(--cyan)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="title">MMOI · Agent Orchestration Dashboard<small>Multi-Agent Orchestration Infrastructure — live team-of-teams view</small></div>
+    <span class="live-pill"><span class="live-dot"></span><span id="clock">--:--:--</span> · <span id="feed-age">feeds loaded</span></span>
+  </header>
+  <div class="meta-line" id="meta-line">Reading window globals from the feed scripts…</div>
+
+  <div id="orch-root"></div>
+
+  <section class="section">
+    <div class="section-head">
+      <div><div class="section-title">Live tasks</div><div class="section-sub">Dispatched workers, newest first — from <code>live_tasks.js</code></div></div>
+      <div class="section-key">LIVE_TASKS</div>
+    </div>
+    <div id="live-tasks-root"></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <div><div class="section-title">Teams</div><div class="section-sub">Engine teams and their specialist agents — from <code>agent_activity.js</code></div></div>
+      <div class="section-key">AGENT_ACTIVITY</div>
+    </div>
+    <div id="teams-root"></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <div><div class="section-title">Analytics</div><div class="section-sub">Aggregated from <code>analytics_data.js</code> — preview / v0, see README known-limitations</div></div>
+      <div class="section-key">MMOI_ANALYTICS</div>
+    </div>
+    <div id="analytics-root"></div>
+  </section>
+
+  <div class="footnote">
+    Feeds are plain <code>window.*</code> globals injected by the <code>&lt;script&gt;</code> tags below — the page works on <code>file://</code> with no server.
+    Regenerate them with the Python producers in <code>scripts/</code> (see <code>dashboard/README.md</code>).
+    Analytics aggregation, PTME model/engine scoping, and the learning loop are <strong>preview (v0)</strong> — data-integrity hardening is in progress.
+  </div>
+</div>
+
+<!-- Live feeds: each script assigns one window global. No fetch(), works on file://. -->
+<script src="orchestrator_stats.js"></script>
+<script src="live_tasks.js"></script>
+<script src="agent_activity.js"></script>
+<script src="analytics_data.js"></script>
+<script>
+(function(){
+  "use strict";
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function num(v){ var n = Number(v); return isFinite(n) ? n : 0; }
+  function titleCase(s){ return String(s||'').split(/[-_ ]+/).filter(Boolean).map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' '); }
+  function fmtPct(p){ return (p==null) ? '—' : (Math.round(p*10)/10)+'%'; }
+  function fmtTokens(t){ return (t==null) ? null : Number(t).toLocaleString(); }
+  function trunc(s,n){ s=String(s||''); return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+  function ago(iso){
+    if(!iso) return '—';
+    var t = Date.parse(iso); if(isNaN(t)) return '—';
+    var s = Math.max(0, Math.floor((Date.now()-t)/1000));
+    if(s<60) return s+'s ago';
+    var m = Math.floor(s/60); if(m<60) return m+'m ago';
+    var h = Math.floor(m/60); if(h<24) return h+'h ago';
+    return Math.floor(h/24)+'d ago';
+  }
+  function elapsed(a,b){
+    var t0=Date.parse(a), t1=Date.parse(b||new Date().toISOString());
+    if(isNaN(t0)||isNaN(t1)||t1<t0) return '—';
+    var s=Math.floor((t1-t0)/1000);
+    if(s<60) return s+'s'; var m=Math.floor(s/60); if(m<60) return m+'m'; return Math.floor(m/60)+'h '+(m%60)+'m';
+  }
+
+  // ---------- orchestrator header ----------
+  function renderUsage(o){
+    var pct = (o && typeof o.usage_pct==='number') ? o.usage_pct : null;
+    var cls = pct==null ? 'orch-usage orch-usage-null' : 'orch-usage';
+    var big = pct==null ? '—' : fmtPct(pct);
+    var cap = pct==null ? esc(o && o.usage_source || 'no usage telemetry') : 'rate-limit window used';
+    return '<div class="'+cls+'"><div class="orch-usage-text"><span class="orch-usage-big">'+esc(big)+'</span><span class="orch-usage-cap">'+cap+'</span></div></div>';
+  }
+  function renderOrchCard(o){
+    var running = num(o && o.running_now);
+    var active = running>0;
+    return '<article class="orch-card'+(active?' orch-card-active':'')+'">'
+      + '<div><div class="orch-name">'+esc(o && o.name ? o.name : (o && o.id) || 'Orchestrator')+'</div></div>'
+      + renderUsage(o)
+      + '<div class="orch-stats">'
+      + '<div class="orch-stat"><span class="orch-stat-v">'+num(o && o.team_size)+'</span><span class="orch-stat-l">agents</span></div>'
+      + '<div class="orch-stat'+(active?' orch-stat-run':'')+'"><span class="orch-stat-v">'+running+'</span><span class="orch-stat-l">running</span></div>'
+      + '<div class="orch-stat"><span class="orch-stat-v">'+num(o && o.tasks_done_total)+'</span><span class="orch-stat-l">done</span></div>'
+      + '<div class="orch-stat"><span class="orch-stat-v">'+num(o && o.learning_loops_total)+'</span><span class="orch-stat-l">lessons</span></div>'
+      + '</div></article>';
+  }
+  function renderOrch(){
+    var doc = window.ORCH_STATS;
+    var list = (doc && Array.isArray(doc.orchestrators)) ? doc.orchestrators : [];
+    if(!list.length){
+      $('orch-root').innerHTML = '<div class="orch-header-empty">No orchestrator telemetry yet. Awaiting <code>window.ORCH_STATS</code> from <code>orchestrator_stats.js</code> — run <code>python scripts/orchestrator_stats.py</code>.</div>';
+      return;
+    }
+    $('orch-root').innerHTML = '<section class="orch-header"><div class="orch-header-label">Orchestrator status</div><div class="orch-grid">'
+      + list.map(renderOrchCard).join('') + '</div></section>';
+  }
+
+  // ---------- live tasks ----------
+  function renderLiveTasks(){
+    var doc = window.LIVE_TASKS;
+    var entries = (doc && Array.isArray(doc.entries)) ? doc.entries.slice() : [];
+    if(!entries.length){
+      $('live-tasks-root').innerHTML = '<div class="idle-note">No dispatched tasks yet. Record one with <code>python scripts/dispatch_worker.py start --engine codex --role qa --task-id T-1 --text "…"</code>.</div>';
+      return;
+    }
+    entries.sort(function(a,b){ return Date.parse(b.updated_at||0) - Date.parse(a.updated_at||0); });
+    var rows = entries.map(function(e){
+      var st = String(e.status||'pending').toLowerCase();
+      var stCls = st==='running' ? 'lt-status-running' : (st==='done'?'lt-status-done':'lt-status-other');
+      var trendCls = st==='running' ? 'lt-trend lt-trend-run' : (st==='done' ? 'lt-trend lt-trend-done' : 'lt-trend');
+      var when = st==='running' ? elapsed(e.started_at, e.updated_at) : ago(e.completed_at||e.updated_at);
+      var model = e.model ? esc(e.model)+(e.effort?' / '+esc(e.effort):'') : '—';
+      return '<div class="lt-row'+(st==='running'?' lt-running':'')+'"><div class="lt-head">'
+        + '<span class="lt-id">'+esc(e.task_id||'—')+'</span>'
+        + '<span class="lt-worker">'+esc(e.worker_id||'—')+' <small>'+model+'</small></span>'
+        + '<span class="lt-status '+stCls+'">'+esc(st)+'</span>'
+        + '<span class="lt-when">'+esc(when)+'</span>'
+        + '<span class="'+trendCls+'">'+(st==='running'?'live':st==='done'?'done':esc(st))+'</span>'
+        + '</div></div>';
+    }).join('');
+    $('live-tasks-root').innerHTML = '<div class="lt-scroll">'+rows+'</div>';
+  }
+
+  // ---------- teams ----------
+  function engineOf(id){
+    id = String(id||'').toLowerCase();
+    if(id.indexOf('codex')===0) return {key:'codex', name:'Codex team'};
+    if(id.indexOf('agy')===0)   return {key:'agy',   name:'Antigravity team'};
+    if(id.indexOf('claude')===0)return {key:'claude',name:'Claude team'};
+    return {key:'orchestrator', name:'Orchestrator'};
+  }
+  function agentCard(a){
+    var running = a.status==='running';
+    var dot = running ? 'var(--green)' : 'var(--muted)';
+    var role = (a.role || (String(a.agent||'').split('-').slice(1).join('-')) || a.agent || 'role');
+    var usage = (a.usage && typeof a.usage==='object') ? a.usage : null;
+    var pct = usage && typeof usage.window_pct==='number' ? usage.window_pct : null;
+    var bar = pct!=null
+      ? '<div style="margin-top:7px;height:5px;border-radius:999px;background:var(--surface3);overflow:hidden"><div style="height:100%;width:'+Math.max(0,Math.min(100,Math.round(pct)))+'%;background:'+(pct>=90?'var(--red)':pct>60?'var(--yellow)':'var(--green)')+';border-radius:999px"></div></div>'
+      : '';
+    return '<article class="ag-card '+(running?'ag-run':'ag-idle')+'">'
+      + '<div class="ag-top"><div style="min-width:0"><div class="ag-role">'+esc(String(role).toUpperCase())+'</div><div class="ag-id">'+esc(a.agent||'—')+'</div></div><span class="ag-dot" style="background:'+dot+(running?';box-shadow:0 0 8px '+dot:'')+'"></span></div>'
+      + '<div class="ag-task">'+esc(running ? trunc(a.current_task||'—',90) : 'idle seed slot')+'</div>'
+      + '<div class="ag-foot"><span>'+esc(running ? (a.model||'—')+(a.effort?' / '+a.effort:'') : 'seed slot')+'</span><span>'+(running?esc(elapsed(a.started_at,a.updated_at)):'—')+'</span></div>'
+      + bar + '</article>';
+  }
+  function renderTeams(){
+    var doc = window.AGENT_ACTIVITY;
+    var entries = (doc && Array.isArray(doc.entries)) ? doc.entries : [];
+    if(!entries.length){
+      $('teams-root').innerHTML = '<div class="idle-note">No agent activity yet. Run <code>python scripts/agent_activity.py list</code> to seed the feed.</div>';
+      return;
+    }
+    var order = ['orchestrator','claude','agy','codex'];
+    var groups = {};
+    entries.forEach(function(a){
+      var g = engineOf(a.agent);
+      (groups[g.key] = groups[g.key] || {name:g.name, agents:[]}).agents.push(a);
+    });
+    var html = order.filter(function(k){ return groups[k]; }).map(function(k){
+      var grp = groups[k];
+      var run = grp.agents.filter(function(a){return a.status==='running';}).sort(byName);
+      var idle = grp.agents.filter(function(a){return a.status!=='running';}).sort(byName);
+      var cards = run.length
+        ? '<div class="ag-grid">'+run.map(agentCard).join('')+'</div>'
+        : '<div class="idle-note">No running agents in this team right now.</div>';
+      var idlePart = idle.length
+        ? '<details style="margin-top:12px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.015)"><summary style="cursor:pointer;padding:11px 13px;font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)">Idle seed slots ('+idle.length+')</summary><div style="padding:0 13px 13px"><div class="idle-pills">'+idle.map(function(a){ return '<span class="idle-pill">'+esc(a.role||a.agent)+'</span>'; }).join('')+'</div></div></details>'
+        : '';
+      return '<div class="team"><div class="team-head"><div><div class="team-name">'+esc(grp.name)+'</div><div class="team-sub">'+run.length+' running · '+idle.length+' idle</div></div><div class="section-key">'+esc(k)+'</div></div>'+cards+idlePart+'</div>';
+    }).join('');
+    $('teams-root').innerHTML = html;
+  }
+  function byName(a,b){ return String(a.agent).localeCompare(String(b.agent)); }
+
+  // ---------- analytics ----------
+  function renderAnalytics(){
+    var doc = window.MMOI_ANALYTICS;
+    if(!doc || typeof doc!=='object'){
+      $('analytics-root').innerHTML = '<div class="idle-note">No analytics yet. Run <code>python scripts/build_analytics.py</code>.</div>';
+      return;
+    }
+    var cards = [];
+    function card(v,l){ if(v==null) return; cards.push('<div class="an-card"><div class="an-v">'+esc(v)+'</div><div class="an-l">'+esc(l)+'</div></div>'); }
+    var src = doc.sources || {};
+    var dec = doc.decisions || {};
+    var ll = doc.learning_loop || {};
+    card(src.tasks_total, 'tasks tracked');
+    card(src.activity_entries, 'agent slots');
+    card(src.running_agents, 'running now');
+    card(src.live_task_count, 'live-task rows');
+    var decTotal = (dec.summary && dec.summary.logged_count != null) ? dec.summary.logged_count : src.ptme_decision_count;
+    card(decTotal, 'PTME decisions');
+    var lessons = (ll.lessons_count != null) ? ll.lessons_count : src.lessons_count;
+    card(lessons, 'lessons logged');
+    if(!cards.length){ $('analytics-root').innerHTML = '<div class="idle-note">Analytics payload present but empty — feeds need data. (Preview/v0.)</div>'; return; }
+    var note = '<div style="margin-top:10px;font-size:11px;color:var(--muted)">Preview (v0): aggregation and learning-loop counts are being hardened — see README known-limitations.</div>';
+    $('analytics-root').innerHTML = '<div class="an-grid">'+cards.join('')+'</div>'+note;
+  }
+
+  // ---------- meta / clock ----------
+  function metaLine(){
+    var o = window.ORCH_STATS && window.ORCH_STATS._meta;
+    var a = window.AGENT_ACTIVITY && window.AGENT_ACTIVITY._meta;
+    var an = window.MMOI_ANALYTICS && window.MMOI_ANALYTICS._meta;
+    var parts = [];
+    if(o && o.updated_at) parts.push('orchestrator_stats @ '+esc(o.updated_at));
+    if(a && a.updated_at) parts.push('agent_activity @ '+esc(a.updated_at));
+    if(an && an.generated_at) parts.push('analytics @ '+esc(an.generated_at));
+    $('meta-line').innerHTML = parts.length ? 'Feed timestamps · '+parts.join(' · ') : 'Feeds loaded (no timestamps reported).';
+    var loaded = [window.ORCH_STATS,window.LIVE_TASKS,window.AGENT_ACTIVITY,window.MMOI_ANALYTICS].filter(Boolean).length;
+    $('feed-age').textContent = loaded+'/4 feeds';
+  }
+  function tickClock(){
+    var d = new Date();
+    $('clock').textContent = d.toTimeString().slice(0,8);
+  }
+
+  function renderAll(){
+    try{ renderOrch(); }catch(e){ console.error('orch render',e); }
+    try{ renderLiveTasks(); }catch(e){ console.error('live tasks render',e); }
+    try{ renderTeams(); }catch(e){ console.error('teams render',e); }
+    try{ renderAnalytics(); }catch(e){ console.error('analytics render',e); }
+    try{ metaLine(); }catch(e){ console.error('meta',e); }
+  }
+
+  function start(){
+    renderAll();
+    tickClock();
+    setInterval(tickClock, 1000);
+    // Re-render live durations periodically (feeds are static globals on file://;
+    // refresh the page to pick up regenerated feed files).
+    setInterval(function(){ try{ renderLiveTasks(); renderTeams(); }catch(e){} }, 5000);
+  }
+  if(document.readyState!=='loading') start();
+  else document.addEventListener('DOMContentLoaded', start);
+})();
+</script>
+</body>
+</html>

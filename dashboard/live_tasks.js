@@ -1,0 +1,8 @@
+window.LIVE_TASKS = {
+  "_meta": {
+    "schema": 1,
+    "note": "Live tasks recorded by scripts/dispatch_worker.py for file:// dashboard rendering.",
+    "updated_at": "2026-06-23T08:57:35Z"
+  },
+  "entries": []
+};
