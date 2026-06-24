@@ -1,9 +1,9 @@
-# andy.toml — The Orchestrator
+# Role persona: Orchestrator — generic role-based config (person-agnostic)
 
 [agent]
 max_task_size   = "XL"
 preferred_model = "claude-code"
-qa_gate         = ""           # Andy is the final arbiter; no external QA gate
+qa_gate         = ""
 handoff_to      = ""
 
 [task_types]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "session_logs/"
+report_path      = "reports/"

@@ -1,10 +1,10 @@
-# cole.toml — The Conversion Copywriter
+# Role persona: Copywriter — generic role-based config (person-agnostic)
 
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = "jasmin"     # Jasmin verifies ATS compliance and accuracy
-handoff_to      = "jasmin"
+qa_gate         = "security-reviewer"
+handoff_to      = "security-reviewer"
 
 [task_types]
 accepts = ["cv", "cover letter", "write", "copywrite", "proposal", "tailored cv", "resume", "email draft", "pitch", "website copy", "ats", "humanizer"]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "output/"
-report_path      = "agents/andy/inbox/"
+report_path      = "reports/"

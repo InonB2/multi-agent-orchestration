@@ -1,9 +1,9 @@
-# vera.toml — The QA Inspector
+# Role persona: QA Inspector — generic role-based config (person-agnostic)
 
 [agent]
 max_task_size   = "M"
 preferred_model = "claude-code"
-qa_gate         = ""           # Vera IS the QA gate for UI; no second layer
+qa_gate         = ""
 handoff_to      = ""
 
 [task_types]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "reports/"

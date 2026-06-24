@@ -1,10 +1,10 @@
-# rex.toml — The Web Developer
+# Role persona: Web Developer — generic role-based config (person-agnostic)
 
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = "vera"       # Vera QA on all Rex UI deliverables
-handoff_to      = "vera"
+qa_gate         = "qa-inspector"
+handoff_to      = "qa-inspector"
 
 # Example task types — replace with your frontend/web platforms
 [task_types]
@@ -17,4 +17,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "reports/"

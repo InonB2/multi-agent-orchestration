@@ -1,10 +1,10 @@
-# lena.toml — The UI/UX Designer
+# Role persona: UI/UX Designer — generic role-based config (person-agnostic)
 
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = "vera"       # Vera checks design outputs for WCAG compliance
-handoff_to      = "rex"        # Design briefs handed off to Rex for implementation
+qa_gate         = "qa-inspector"
+handoff_to      = "web-developer"
 
 [task_types]
 accepts = ["design", "ui", "ux", "wireframe", "visual", "design brief", "design system", "color palette", "typography", "wcag", "layout", "mockup", "prototype"]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/design/"
-report_path      = "agents/andy/inbox/"
+report_path      = "reports/"

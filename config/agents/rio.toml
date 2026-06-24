@@ -1,10 +1,10 @@
-# rio.toml — The Mobile Engineer
+# Role persona: Mobile Engineer — generic role-based config (person-agnostic)
 
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = "vera"       # Vera QA on all mobile UI outputs
-handoff_to      = "vera"
+qa_gate         = "qa-inspector"
+handoff_to      = "qa-inspector"
 
 [task_types]
 accepts = ["mobile", "react native", "expo", "ios", "android", "typescript", "device testing", "navigation", "async storage", "push notification", "deep link", "eas", "bare rn", "vireoreact", "ar mobile"]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "reports/"

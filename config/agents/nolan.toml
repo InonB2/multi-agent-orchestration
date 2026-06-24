@@ -1,4 +1,4 @@
-# nolan.toml — The HR Agent (Agent Creator & Integrator)
+# Role persona: Agent Integrator (HR) — generic role-based config (person-agnostic)
 
 [agent]
 max_task_size   = "M"
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "agents/"
-report_path      = "agents/andy/inbox/"
+report_path      = "reports/"

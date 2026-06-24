@@ -1,9 +1,9 @@
-# jasmin.toml — The Reviewer (Security & Logic Auditor)
+# Role persona: Security & Logic Reviewer — generic role-based config (person-agnostic)
 
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = ""           # Jasmin IS the QA gate; no second QA layer
+qa_gate         = ""
 handoff_to      = ""
 
 [task_types]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "reports/"

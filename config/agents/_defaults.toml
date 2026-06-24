@@ -5,8 +5,8 @@
 [agent]
 max_task_size   = "L"          # S, M, L, XL — max complexity this agent accepts
 preferred_model = "claude-code"
-qa_gate         = ""           # which agent does QA on this agent's output
-handoff_to      = ""           # default handoff agent on rate limit
+qa_gate         = ""
+handoff_to      = ""
 
 # NOTE: [task_types] is descriptive metadata only. The live router
 # (scripts/task_router.py) routes by keyword scoring over its own hardcoded
@@ -22,7 +22,7 @@ resume_queue  = true           # add to resume queue on rate limit hit
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "reports/"
 
 [provider]
 # "cli" = invoke via a local CLI tool (Claude Code, Codex CLI, etc.)
