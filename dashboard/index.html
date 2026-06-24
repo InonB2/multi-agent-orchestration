@@ -40,6 +40,11 @@
   .orch-usage-big{font-size:24px;font-weight:800;color:var(--text);line-height:1}
   .orch-usage-null .orch-usage-big{color:var(--muted)}
   .orch-usage-cap{font-size:10px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
+  .orch-usage-rings{gap:16px}
+  .orch-ring-wrap{display:flex;flex-direction:column;align-items:center;gap:5px}
+  .orch-ring{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+  .orch-ring-hole{width:36px;height:36px;border-radius:50%;background:var(--surface,#13151a);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--text)}
+  .orch-ring-lbl{font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em}
   .orch-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
   .orch-stat{display:flex;flex-direction:column;align-items:flex-start;padding:8px 9px;background:var(--surface3);border:1px solid var(--border);border-radius:10px}
   .orch-stat-run{border-color:rgba(52,211,153,0.4);background:rgba(52,211,153,0.10)}
@@ -172,12 +177,29 @@
   }
 
   // ---------- orchestrator header ----------
+  function usageRing(pct, label){
+    // Honest dual-window ring: primary (5h) + weekly. Null => "no telemetry".
+    var has = (typeof pct==='number');
+    var col = !has ? 'var(--muted)' : (pct>=90?'var(--red)':pct>60?'var(--yellow)':'var(--green)');
+    var deg = has ? Math.max(0,Math.min(100,pct))*3.6 : 0;
+    var ring = has
+      ? 'background:conic-gradient('+col+' '+deg+'deg, var(--surface3) '+deg+'deg)'
+      : 'background:var(--surface3)';
+    return '<div class="orch-ring-wrap"><div class="orch-ring" style="'+ring+'">'
+      + '<div class="orch-ring-hole">'+esc(has?fmtPct(pct):'—')+'</div></div>'
+      + '<div class="orch-ring-lbl">'+esc(label)+'</div></div>';
+  }
   function renderUsage(o){
-    var pct = (o && typeof o.usage_pct==='number') ? o.usage_pct : null;
-    var cls = pct==null ? 'orch-usage orch-usage-null' : 'orch-usage';
-    var big = pct==null ? '—' : fmtPct(pct);
-    var cap = pct==null ? esc(o && o.usage_source || 'no usage telemetry') : 'rate-limit window used';
-    return '<div class="'+cls+'"><div class="orch-usage-text"><span class="orch-usage-big">'+esc(big)+'</span><span class="orch-usage-cap">'+cap+'</span></div></div>';
+    var p = (o && typeof o.usage_pct_primary==='number') ? o.usage_pct_primary
+          : (o && typeof o.usage_pct==='number') ? o.usage_pct : null;
+    var w = (o && typeof o.usage_pct_weekly==='number') ? o.usage_pct_weekly : null;
+    // If neither window has telemetry, fall back to the honest source caption.
+    if(p==null && w==null){
+      var cap = esc(o && o.usage_source || 'no usage telemetry');
+      return '<div class="orch-usage orch-usage-null"><div class="orch-usage-text">'
+        + '<span class="orch-usage-big">—</span><span class="orch-usage-cap">'+cap+'</span></div></div>';
+    }
+    return '<div class="orch-usage orch-usage-rings">'+usageRing(p,'5h')+usageRing(w,'weekly')+'</div>';
   }
   function renderOrchCard(o){
     var running = num(o && o.running_now);
@@ -273,7 +295,7 @@
         ? '<div class="ag-grid">'+run.map(agentCard).join('')+'</div>'
         : '<div class="idle-note">No running agents in this team right now.</div>';
       var idlePart = idle.length
-        ? '<details style="margin-top:12px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.015)"><summary style="cursor:pointer;padding:11px 13px;font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)">Idle seed slots ('+idle.length+')</summary><div style="padding:0 13px 13px"><div class="idle-pills">'+idle.map(function(a){ return '<span class="idle-pill">'+esc(a.role||a.agent)+'</span>'; }).join('')+'</div></div></details>'
+        ? '<details data-panel="idle-'+esc(k)+'" style="margin-top:12px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.015)"><summary style="cursor:pointer;padding:11px 13px;font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)">Idle seed slots ('+idle.length+')</summary><div style="padding:0 13px 13px"><div class="idle-pills">'+idle.map(function(a){ return '<span class="idle-pill">'+esc(a.role||a.agent)+'</span>'; }).join('')+'</div></div></details>'
         : '';
       return '<div class="team"><div class="team-head"><div><div class="team-name">'+esc(grp.name)+'</div><div class="team-sub">'+run.length+' running · '+idle.length+' idle</div></div><div class="section-key">'+esc(k)+'</div></div>'+cards+idlePart+'</div>';
     }).join('');
@@ -324,12 +346,31 @@
     $('clock').textContent = d.toTimeString().slice(0,8);
   }
 
+  // ---------- expand-state persistence (survives re-render + refresh) ----------
+  var OPEN_PANELS = {};
+  try{ OPEN_PANELS = JSON.parse(localStorage.getItem('mmoi_open_panels')||'{}') || {}; }catch(e){ OPEN_PANELS = {}; }
+  function persistOpenPanels(){
+    try{ localStorage.setItem('mmoi_open_panels', JSON.stringify(OPEN_PANELS)); }catch(e){}
+  }
+  function restoreOpenPanels(){
+    var nodes = document.querySelectorAll('details[data-panel]');
+    for(var i=0;i<nodes.length;i++){
+      (function(d){
+        var key = d.getAttribute('data-panel');
+        if(OPEN_PANELS[key]) d.open = true;
+        d.addEventListener('toggle', function(){
+          OPEN_PANELS[key] = d.open; persistOpenPanels();
+        });
+      })(nodes[i]);
+    }
+  }
   function renderAll(){
     try{ renderOrch(); }catch(e){ console.error('orch render',e); }
     try{ renderLiveTasks(); }catch(e){ console.error('live tasks render',e); }
     try{ renderTeams(); }catch(e){ console.error('teams render',e); }
     try{ renderAnalytics(); }catch(e){ console.error('analytics render',e); }
     try{ metaLine(); }catch(e){ console.error('meta',e); }
+    try{ restoreOpenPanels(); }catch(e){ console.error('restore panels',e); }
   }
 
   function start(){

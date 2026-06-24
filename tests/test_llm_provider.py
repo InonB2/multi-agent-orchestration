@@ -42,7 +42,7 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/root/inbox/"
 
 [provider]
 type = "cli"

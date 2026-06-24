@@ -24,7 +24,7 @@ dashboard/
    `file:///…/dashboard/index.html`. No web server, no build step, no Node.
 
 The shipped feed files are seeded to a clean **idle** state, so the page renders
-out-of-the-box: four orchestrator cards (Andy / Claude / Antigravity / Codex),
+out-of-the-box: four orchestrator cards (Root / Claude / Antigravity / Codex),
 idle specialist slots grouped by engine team, an empty live-tasks list, and a
 zeroed analytics strip. Wire in the producers below to make it come alive.
 
@@ -117,8 +117,46 @@ reports that honestly rather than inventing a number.
 The shipped seed roster in `scripts/agent_activity.py` (`SEED_AGENT_IDS`) is
 generic and role-based. The producers and the dashboard key off the **engine
 prefix** (`claude-` / `agy- ` / `codex-`) and the **role suffix**, not on any
-specific names — rename `andy` to your own orchestrator id and add your own
+specific names — rename `root` to your own orchestrator id and add your own
 `<engine>-<role>` worker ids and everything still wires up.
+
+## Dashboard UX behaviors (2026-06-24 upgrade)
+
+The single-file board ports the high-value interaction behaviors from the
+internal console, against the **real** telemetry shape the producers emit — no
+mocked numbers:
+
+- **Dual usage rings per orchestrator** — each orchestrator card renders two
+  rings: the **primary 5-hour** window and the **secondary weekly** window
+  (`usage_pct_primary` / `usage_pct_weekly` from `orchestrator_stats.py`). An
+  engine that exposes no usage telemetry (e.g. Antigravity) shows `—` and the
+  honest source caption rather than a fabricated percentage.
+- **Expand-state persistence** — collapsible panels (e.g. a team's *idle seed
+  slots*) remember their open/closed state across re-render and page refresh via
+  `localStorage` (`OPEN_PANELS` / `restoreOpenPanels`). Any `<details>` tagged
+  with `data-panel="…"` participates automatically.
+- **Running-vs-idle split** — each engine team separates running agents from idle
+  seed slots, with the idle slots tucked into a collapsible panel.
+- **Live learning-loop / lesson counts** — orchestrator cards surface
+  `learning_loops_total`; the analytics strip surfaces `lessons logged` from the
+  learning-loop payload.
+
+### Dashboard UI port: follow-up
+
+A few behaviors from the internal console are **intentionally not ported here**
+to keep this public board self-contained and free of any private console code or
+PII:
+
+- **Team-size drill-down** (click an orchestrator's `agents` count to expand the
+  full per-role membership) — the public board shows the count and the
+  running/idle split, but not the click-through roster drill-down.
+- **Full live learning-loop panel** (a scrolling feed of individual lesson
+  entries with source/engine attribution) — the public board shows counts only,
+  not the per-lesson stream, because the internal feed embeds private source
+  paths. Re-add it here only against a sanitized lessons feed.
+
+These are tracked as a follow-up; the ported behaviors above are complete and
+PII-free.
 
 ## Known limitations / Roadmap
 

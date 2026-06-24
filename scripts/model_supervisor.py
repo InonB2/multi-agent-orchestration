@@ -11,10 +11,10 @@ One supervisor process owns a single model's partition of the task queue. It:
      (max_workers=1, Phase-1 MVP) or in parallel up to the model's concurrency cap
      (Phase-2). Each worker runs in its own isolated git worktree.
   4. AGGREGATES every worker's result back up into a single summary returned to the
-     orchestrator (Andy), including per-task status and the deterministic result
+     orchestrator (Root), including per-task status and the deterministic result
      path written by worker_wrapper.py.
 
-Andy contract: this supervisor is a pure delegating orchestrator. It selects,
+Root contract: this supervisor is a pure delegating orchestrator. It selects,
 claims, dispatches, checkpoints worker state on interruptions, and aggregates
 results; it never performs the worker's specialist task itself.
 
@@ -239,7 +239,7 @@ def run_pool(tasks, runner, max_workers=1, cooldown_seconds=RATE_LIMIT_COOLDOWN,
 
 def supervise(model, tasks_file=None, max_workers=None, runner=None,
               claimer=None, dry_run=False, sleep_fn=time.sleep) -> dict:
-    """Top-level Andy flow for one model: select -> claim -> dispatch -> aggregate.
+    """Top-level Root flow for one model: select -> claim -> dispatch -> aggregate.
 
     Returns an aggregate summary dict. `runner` and `claimer` default to the real
     subprocess-backed implementations but are injectable for tests.

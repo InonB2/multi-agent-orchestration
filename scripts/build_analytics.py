@@ -23,6 +23,43 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# Make sibling scripts importable so we can pull the LIVE learning-loop summary
+# (validated, timestamped rules) instead of the frozen BKM markdown count.
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+
+try:
+    import learning_loop  # type: ignore
+except Exception:  # pragma: no cover - resilient: missing module => no live data
+    learning_loop = None  # type: ignore
+
+try:
+    import ptme  # type: ignore
+except Exception:  # pragma: no cover - resilient
+    ptme = None  # type: ignore
+
+# Known model -> engine family. Sourced from ptme.CAPABILITY_TABLE (single source
+# of truth). A decided_model NOT in this set is pre-PTME / unknown and must be
+# excluded from the PTME-era charts. A small static fallback keeps analytics
+# working if ptme cannot be imported.
+if ptme is not None and getattr(ptme, "CAPABILITY_TABLE", None):
+    KNOWN_MODEL_FAMILIES = {m: info.get("family") for m, info in ptme.CAPABILITY_TABLE.items()}
+else:  # pragma: no cover - fallback only when ptme import fails
+    KNOWN_MODEL_FAMILIES = {
+        "claude-haiku-4.5": "claude",
+        "claude-sonnet-4.6": "claude",
+        "claude-opus-4.8": "claude",
+        "gpt-5.3-codex": "codex",
+        "gpt-5.5": "codex",
+        "gemini-3.5-flash": "agy",
+        "gemini-3.1-pro": "agy",
+    }
+
+# Complexity tiers ALWAYS render in this order with this explainer.
+COMPLEXITY_ORDER = ("S", "M", "L", "XL")
+COMPLEXITY_LABELS = {"S": "Small", "M": "Medium", "L": "Large", "XL": "Extra-Large"}
+
 TASKS_FILE = ROOT / "tasks" / "active_tasks.json"
 PTME_LOG_FILE = ROOT / "logs" / "ptme_decisions.jsonl"
 ACTIVITY_FILE = ROOT / "dashboard" / "agent_activity.json"
@@ -40,17 +77,6 @@ if hasattr(sys.stderr, "reconfigure"):
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _rel(path: Path | str) -> str:
-    """Render a path repo-relative (POSIX separators) so the published feed
-    never embeds an absolute machine path. Falls back to the basename if the
-    path lives outside the repo root."""
-    p = Path(path)
-    try:
-        return p.resolve().relative_to(ROOT).as_posix()
-    except (ValueError, OSError):
-        return p.name
 
 
 def parse_iso(value: str | None) -> datetime | None:
@@ -130,7 +156,7 @@ def infer_team(agent_id: str) -> str:
         return "Codex team"
     if agent.startswith("agy"):
         return "Agy team"
-    return "Andy / Claude team"
+    return "Root / Claude team"
 
 
 def task_identity(task: dict) -> str:
@@ -160,6 +186,72 @@ def read_jsonl(path: Path) -> list[dict]:
         if isinstance(row, dict):
             rows.append(row)
     return rows
+
+
+def is_ptme_era_decision(row: dict) -> bool:
+    """True for a real PTME-era decision; False for pre-PTME / unknown junk.
+
+    A PTME-era record must (a) carry a decided_model in a KNOWN engine family,
+    and (b) show the modern decision provenance (a received_at timestamp OR
+    score_reasons from the scorer). Old hand-seeded rows that predate PTME have
+    a model set but lack that provenance, and rows whose decided_model is not in
+    any known family (e.g. test-leak 'some-unknown-model') are excluded — both
+    are what produced the 'unknown' model bucket and the mixed charts.
+    """
+    decided_model = row.get("decided_model")
+    if not decided_model or decided_model not in KNOWN_MODEL_FAMILIES:
+        return False
+    has_provenance = bool(row.get("received_at")) or bool(row.get("score_reasons"))
+    return has_provenance
+
+
+def split_ptme_era(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Partition ptme rows into (ptme_era, legacy) lists."""
+    ptme_era: list[dict] = []
+    legacy: list[dict] = []
+    for row in rows:
+        (ptme_era if is_ptme_era_decision(row) else legacy).append(row)
+    return ptme_era, legacy
+
+
+def complexity_criteria() -> dict:
+    """The criteria/thresholds the UI shows as a complexity explainer.
+
+    Pulled from ptme's scorer (thresholds + signal groups) so it stays in sync
+    with the live classifier. Falls back to a static description if ptme is
+    unavailable.
+    """
+    thresholds = [
+        {"tier": "S", "label": "Small", "rule": "score <= -1", "meaning": "trivial/contained: typo, rename, copy/label fix, single short ask"},
+        {"tier": "M", "label": "Medium", "rule": "-1 < score <= 2", "meaning": "a normal task: one feature, a couple of files, moderate length"},
+        {"tier": "L", "label": "Large", "rule": "2 < score <= 5", "meaning": "broad scope: design/refactor/migration, multiple deliverables or files"},
+        {"tier": "XL", "label": "Extra-Large", "rule": "score > 5", "meaning": "architecture/security/parallel orchestration, high risk + breadth"},
+    ]
+    signals: dict = {}
+    if ptme is not None:
+        try:
+            signals = {
+                "simple_signals": dict(ptme.SIMPLE_SIGNALS),
+                "complex_signals": dict(ptme.COMPLEX_SIGNALS),
+                "risk_signals": dict(ptme.RISK_SIGNALS),
+                "ambiguity_signals": list(ptme.AMBIGUITY_SIGNALS),
+            }
+        except Exception:
+            signals = {}
+    return {"thresholds": thresholds, "signals": signals}
+
+
+def ordered_complexity_mix(rows: list[dict]) -> list[dict]:
+    """Complexity counts emitted in fixed S, M, L, XL order (always all four)."""
+    counts = Counter()
+    for row in rows:
+        c = row.get("complexity")
+        if c in COMPLEXITY_ORDER:
+            counts[c] += 1
+    return [
+        {"tier": tier, "label": COMPLEXITY_LABELS[tier], "count": counts.get(tier, 0)}
+        for tier in COMPLEXITY_ORDER
+    ]
 
 
 def first_log_timestamp(lines: object, marker: str) -> str | None:
@@ -361,7 +453,7 @@ def read_usage_logs(logs_dir: Path) -> tuple[list[str], dict[tuple[str, str | No
     by_agent: dict[str, dict] = {}
 
     for path in sorted(logs_dir.glob("usage*.json")):
-        file_paths.append(_rel(path))
+        file_paths.append(str(path))
         payload = read_json(path, {})
         if isinstance(payload, dict):
             entries = payload.get("entries")
@@ -429,20 +521,39 @@ def build_sources_summary(
     complexity_counts = Counter()
     tasks_with_complexity = 0
 
+    # "active/running" = tasks currently in_progress (live), NOT all-time totals.
+    in_progress_statuses = {"in_progress", "in-progress", "running"}
+    tasks_in_progress = 0
+
     for task in tasks:
         status = str(task.get("status") or "unknown")
         status_counts[status] += 1
+        if status.lower() in in_progress_statuses:
+            tasks_in_progress += 1
         complexity = task.get("complexity")
         if complexity:
             complexity_counts[str(complexity)] += 1
             tasks_with_complexity += 1
 
+    # Live tasks currently running (from live_tasks feed).
+    live_tasks_running = sum(
+        1 for row in live_task_rows if str(row.get("status")) == "running"
+    )
+
     return {
-        "tasks_total": len(tasks),
+        # --- LIFETIME (all-time) figures — clearly labelled ---
+        "tasks_total_lifetime": len(tasks),
+        "tasks_total": len(tasks),  # legacy alias (lifetime)
         "task_status_counts": dict(sorted(status_counts.items())),
         "task_complexity_counts": dict(sorted(complexity_counts.items())),
         "tasks_with_complexity": tasks_with_complexity,
         "tasks_missing_complexity": len(tasks) - tasks_with_complexity,
+        # --- ACTIVE / RUNNING NOW figures — distinct from lifetime ---
+        "active": {
+            "tasks_in_progress": tasks_in_progress,
+            "agents_running": running_agents,
+            "live_tasks_running": live_tasks_running,
+        },
         "activity_entries": activity_count,
         "running_agents": running_agents,
         "live_task_count": len(live_task_rows),
@@ -453,64 +564,91 @@ def build_sources_summary(
     }
 
 
+def _judgment_of(row: dict) -> str:
+    """Genuine orchestrator judgment recorded on the record, with a back-compat
+    fallback to recommended-vs-decided diff for older rows that predate the
+    explicit judgment field."""
+    judgment = row.get("judgment")
+    if judgment in ("accepted", "overridden"):
+        return judgment
+    recommended_model = row.get("recommended_model")
+    recommended_effort = row.get("recommended_effort")
+    decided_model = row.get("decided_model")
+    decided_effort = row.get("decided_effort")
+    return "overridden" if (recommended_model != decided_model or recommended_effort != decided_effort) else "accepted"
+
+
+def _decision_row(row: dict, task_lookup: dict[str, dict], live_tasks_by_task: dict[str, dict], judgment: str) -> dict:
+    task_id = str(row.get("task_id") or "")
+    task = task_lookup.get(task_id, {})
+    live_task = live_tasks_by_task.get(task_id, {})
+    complexity = row.get("complexity")
+    return {
+        "task_id": task_id,
+        "title": task.get("title"),
+        "ts": row.get("ts") or row.get("timestamp"),
+        "received_at": row.get("received_at"),
+        "finished_at": row.get("finished_at"),
+        "complexity": str(complexity) if complexity else None,
+        "recommended_model": row.get("recommended_model"),
+        "recommended_effort": row.get("recommended_effort"),
+        "decided_model": row.get("decided_model"),
+        "decided_effort": row.get("decided_effort"),
+        "decided_by": row.get("decided_by"),
+        "judgment": judgment,
+        "rationale": row.get("rationale") or row.get("reason") or "",
+        "reason": row.get("reason") or "",
+        "changed": judgment == "overridden",
+        "actual_usage_label": format_live_task_usage(
+            live_task.get("usage") if isinstance(live_task, dict) else None,
+            live_task.get("duration_seconds") if isinstance(live_task, dict) else None,
+        ),
+        "actual_usage": live_task.get("usage") if isinstance(live_task, dict) else None,
+        "worker_id": live_task.get("worker_id") if isinstance(live_task, dict) else None,
+    }
+
+
 def build_decisions(ptme_rows: list[dict], task_lookup: dict[str, dict], live_tasks_by_task: dict[str, dict]) -> dict:
+    """Headline decision analytics computed from PTME-ERA records ONLY.
+
+    Pre-PTME / unknown-model rows are split off into a clearly-labelled legacy
+    figure and never mixed into the decided-model chart, complexity mix, or the
+    accepted-vs-overridden tally.
+    """
+    ptme_era, legacy = split_ptme_era(ptme_rows)
+
     rows: list[dict] = []
     accepted = 0
     overridden = 0
-    by_complexity = Counter()
     by_decided_model = Counter()
     by_decided_effort = Counter()
 
-    for row in ptme_rows:
-        task_id = str(row.get("task_id") or "")
-        complexity = row.get("complexity")
-        recommended_model = row.get("recommended_model")
-        recommended_effort = row.get("recommended_effort")
+    for row in ptme_era:
+        judgment = _judgment_of(row)
+        if judgment == "overridden":
+            overridden += 1
+        else:
+            accepted += 1
         decided_model = row.get("decided_model")
         decided_effort = row.get("decided_effort")
-        changed = bool(
-            recommended_model != decided_model or recommended_effort != decided_effort
-        )
-
-        if (recommended_model is not None or recommended_effort is not None
-                or decided_model is not None or decided_effort is not None):
-            if changed:
-                overridden += 1
-            else:
-                accepted += 1
-
-        if complexity:
-            by_complexity[str(complexity)] += 1
-        if decided_model:
+        if decided_model:  # already guaranteed in a known family by the split
             by_decided_model[str(decided_model)] += 1
         if decided_effort:
             by_decided_effort[str(decided_effort)] += 1
-
-        task = task_lookup.get(task_id, {})
-        live_task = live_tasks_by_task.get(task_id, {})
-        rows.append(
-            {
-                "task_id": task_id,
-                "title": task.get("title"),
-                "ts": row.get("ts") or row.get("timestamp"),
-                "complexity": str(complexity) if complexity else None,
-                "recommended_model": recommended_model,
-                "recommended_effort": recommended_effort,
-                "decided_model": decided_model,
-                "decided_effort": decided_effort,
-                "decided_by": row.get("decided_by"),
-                "reason": row.get("reason") or "",
-                "changed": changed,
-                "actual_usage_label": format_live_task_usage(
-                    live_task.get("usage") if isinstance(live_task, dict) else None,
-                    live_task.get("duration_seconds") if isinstance(live_task, dict) else None,
-                ),
-                "actual_usage": live_task.get("usage") if isinstance(live_task, dict) else None,
-                "worker_id": live_task.get("worker_id") if isinstance(live_task, dict) else None,
-            }
-        )
+        rows.append(_decision_row(row, task_lookup, live_tasks_by_task, judgment))
 
     rows.sort(key=lambda item: item.get("ts") or "")
+
+    # Legacy figure — clearly separate, never folded into the PTME charts.
+    legacy_models = Counter()
+    for row in legacy:
+        dm = row.get("decided_model")
+        if dm and dm in KNOWN_MODEL_FAMILIES:
+            legacy_models["pre-PTME (no decision)"] += 1
+        elif dm:
+            legacy_models["unknown model: {}".format(dm)] += 1
+        else:
+            legacy_models["pre-PTME (no decision)"] += 1
 
     return {
         "empty_state": None if rows else "no PTME decisions logged yet",
@@ -519,9 +657,23 @@ def build_decisions(ptme_rows: list[dict], task_lookup: dict[str, dict], live_ta
             "logged_count": len(rows),
             "accepted_count": accepted,
             "overridden_count": overridden,
-            "by_complexity": dict(sorted(by_complexity.items())),
+            # complexity mix ALWAYS ordered S, M, L, XL with all four present.
+            "complexity_mix": ordered_complexity_mix(ptme_era),
+            "complexity_criteria": complexity_criteria(),
+            # back-compat alias (sorted dict) for older UI consumers.
+            "by_complexity": {
+                item["tier"]: item["count"]
+                for item in ordered_complexity_mix(ptme_era)
+                if item["count"]
+            },
             "by_decided_model": dict(sorted(by_decided_model.items())),
             "by_decided_effort": dict(sorted(by_decided_effort.items())),
+        },
+        # Lifetime / legacy bucket — labelled, kept OUT of the PTME charts above.
+        "legacy": {
+            "count": len(legacy),
+            "by_model": dict(sorted(legacy_models.items())),
+            "note": "pre-PTME or unknown-model tasks; excluded from the PTME decision charts",
         },
     }
 
@@ -563,11 +715,7 @@ def build_live_tasks(rows: list[dict]) -> dict:
     }
 
 
-def build_runtime(
-    tasks: list[dict],
-    activity_lookup: dict[str, dict],
-    decision_rows: list[dict],
-) -> tuple[dict, dict[str, int], dict[str, set[str]]]:
+def build_runtime(tasks: list[dict], activity_lookup: dict[str, dict], decision_rows: list[dict]) -> tuple[dict, dict[str, int], dict[str, set[str]]]:
     decision_task_ids = {str(row.get("task_id")) for row in decision_rows if row.get("task_id")}
     runtime_rows: list[dict] = []
     agent_seconds: dict[str, int] = defaultdict(int)
@@ -676,9 +824,7 @@ def build_per_agent_usage(
         activity_usage = activity_entry.get("usage") if isinstance(activity_entry, dict) else None
         usage = merge_usage(
             activity_usage,
-            usage_by_agent_task.get(
-                (agent, str(active_task_id) if active_task_id else None)
-            ) or usage_by_agent.get(agent),
+            usage_by_agent_task.get((agent, str(active_task_id) if active_task_id else None)) or usage_by_agent.get(agent),
         )
         total_runtime_seconds = agent_seconds.get(agent)
         rows.append(
@@ -708,14 +854,66 @@ def build_per_agent_usage(
     return {"rows": rows}
 
 
+def load_live_learning() -> dict:
+    """Pull the LIVE learning-loop summary (validated, timestamped rules).
+
+    Replaces the frozen BKM/AGENT_LESSONS.md count as the analytics source of
+    truth. Resilient: a missing module, missing rules file, or any error yields
+    an empty (but well-shaped) summary rather than crashing the build.
+    """
+    empty = {
+        "available": False,
+        "updated_at": None,
+        "min_sample": None,
+        "promoted_count": 0,
+        "candidate_count": 0,
+        "demoted_count": 0,
+        "promoted": [],
+        "candidates": [],
+    }
+    if learning_loop is None:
+        return empty
+    try:
+        summary = learning_loop.summary()
+    except Exception:
+        return empty
+    if not isinstance(summary, dict):
+        return empty
+    promoted = summary.get("promoted") if isinstance(summary.get("promoted"), list) else []
+    candidates = summary.get("candidates") if isinstance(summary.get("candidates"), list) else []
+    return {
+        "available": True,
+        "updated_at": summary.get("updated_at"),
+        "min_sample": summary.get("min_sample"),
+        "promoted_count": summary.get("promoted_count", len(promoted)),
+        "candidate_count": summary.get("candidate_count", len(candidates)),
+        "demoted_count": summary.get("demoted_count", 0),
+        "promoted": promoted,
+        "candidates": candidates,
+    }
+
+
 def build_learning_loop(lessons: dict, decisions: dict) -> dict:
     decision_count = decisions.get("summary", {}).get("logged_count", 0)
+    live = load_live_learning()
     return {
+        # --- LIVE learning loop (validated, timestamped rules) — source of truth ---
+        "live": live,
+        "promoted_count": live.get("promoted_count", 0),
+        "candidate_count": live.get("candidate_count", 0),
+        "demoted_count": live.get("demoted_count", 0),
+        "promoted_rules": live.get("promoted", []),
+        "candidate_rules": live.get("candidates", []),
+        "last_validated": live.get("updated_at"),
+        # --- legacy static markdown (kept only for reference, NOT the headline) ---
+        "static_lessons_count": lessons.get("count", 0),
+        "static_last_updated": lessons.get("last_updated"),
+        "static_recent_lessons": lessons.get("recent", []),
+        "decision_logging_status": "recording" if decision_count else "no PTME decisions logged yet",
+        # --- legacy aliases (back-compat for existing consumers + tests) ---
         "lessons_count": lessons.get("count", 0),
         "last_updated": lessons.get("last_updated"),
-        "recent_sections": lessons.get("sections", [])[-3:],
         "recent_lessons": lessons.get("recent", []),
-        "decision_logging_status": "recording" if decision_count else "no PTME decisions logged yet",
         "qa_rounds": "metric pending — needs more logged runs",
         "rework_trend": "metric pending — needs more logged runs",
     }
@@ -765,11 +963,11 @@ def build_payload() -> dict:
             "schema": 2,
             "generated_at": now_iso(),
             "source_files": {
-                "tasks": _rel(TASKS_FILE),
-                "ptme_decisions": _rel(PTME_LOG_FILE),
-                "activity": _rel(ACTIVITY_FILE),
-                "live_tasks": _rel(LIVE_TASKS_FILE),
-                "lessons": _rel(LESSONS_FILE),
+                "tasks": str(TASKS_FILE),
+                "ptme_decisions": str(PTME_LOG_FILE),
+                "activity": str(ACTIVITY_FILE),
+                "live_tasks": str(LIVE_TASKS_FILE),
+                "lessons": str(LESSONS_FILE),
                 "usage_logs": usage_files,
             },
         },

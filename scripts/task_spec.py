@@ -116,7 +116,7 @@ def cmd_create(args):
     title       = task.get("title", "")
     complexity  = task.get("complexity", "")
     assigned_to = task.get("assigned_to", "")
-    created_by  = args.created_by or "andy"
+    created_by  = args.created_by or "root"
 
     # Non-interactive path: all flags provided
     if args.done and args.remaining and args.next and args.criteria:
@@ -297,8 +297,8 @@ def main():
     p_create.add_argument("--remaining",  default="",   help="What remains")
     p_create.add_argument("--next",       default="",   help="Exact next step")
     p_create.add_argument("--criteria",   default="",   help="Acceptance criteria — JSON array or comma-separated")
-    p_create.add_argument("--created-by", dest="created_by", default="andy",
-                          help="Creator name/model (default: andy)")
+    p_create.add_argument("--created-by", dest="created_by", default="root",
+                          help="Creator name/model (default: root)")
 
     # read
     p_read = sub.add_parser("read", help="Print a spec file as JSON.")

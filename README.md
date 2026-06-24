@@ -37,7 +37,7 @@ cd multi-agent-orchestration
 ## Architecture
 
 ```
-Project → Orchestrator (Andy / your orchestrator)
+Project → Orchestrator (root / your orchestrator)
          ├─ Decomposes project into tasks
          ├─ Estimates complexity (S/M/L/XL)
          ├─ Routes each task to the best model via capability table
@@ -134,6 +134,55 @@ Setup, the dispatch → sub-orchestrator → PTME flow, the rate-wall watchdog, 
 an honest **known-limitations / roadmap** (analytics aggregation, PTME
 model-vs-engine scoping, and the learning loop are a hardening-in-progress
 **v0/preview**) are documented in **[dashboard/README.md](dashboard/README.md)**.
+
+## Framework Upgrades
+
+The multi-engine agent orchestration framework has been upgraded to support optimized cognitive performance, cost-efficiency, and deep telemetric observability. Below is an overview of the key capability enhancements:
+
+## Core Enhancements
+
+### 1. Engine-Scoped PTME Model Selection
+To eliminate inefficiencies, the runtime features **Engine-Scoped PTME (Pre-Trained Model Engine) Selection**. Each orchestration engine operates strictly within its native model family (e.g., Claude engines utilize Anthropic Claude models, Codex engines use OpenAI models, and `agy` engines use Google models). 
+* **Contextual Tuning**: Dynamically matches tasks to the optimal engine scope (e.g., Claude for complex reasoning, Codex for fast code translation).
+* **Tiered Fallbacks**: Gracefully switches to alternative models within the same engine family if premium tiers encounter rate limits or availability issues.
+
+### 2. Named Specialist Agents per Role
+Rather than operating with generic, monolithic agent definitions, the framework now enforces **Named Specialist Agents** with custom roles (e.g., `Codebase Researcher`, `Database Debugger`, `Interface Architect`).
+* **Dedicated Personas**: Specialists are initialized with role-specific system instructions, restricted tool sets, and custom guidelines.
+* **Delegation Hierarchy**: Specialists can spawn subagents to handle subtasks, keeping the parent execution context clean and optimizing context window usage.
+
+### 3. Real Per-Task Usage Capture
+Accurate, granular tracking of token consumption and execution metrics is captured per task:
+* **Input vs. Output Tokens**: Tracks prompt tokens and generated tokens separately.
+* **Cache Read/Write Tokens**: Captures prompt-caching usage (e.g., Anthropic prompt caching) to calculate exact cost discounts.
+* **Metadata & Timestamps**: Attaches execution timestamps and precise token limits to verify planned vs. actual resource utilization.
+
+### 4. Closed Learning Loop (Reflexion & OPRO-Inspired)
+The platform features an automated **Closed Learning Loop** inspired by Reflexion and OPRO (Optimization by PROmpting) to continuously improve agent correctness.
+* **Execution & Evaluation**: Tasks are executed and graded using deterministic verification suites (linters, unit tests, compilers).
+* **Reflection**: When grades fall below a defined threshold, a reflection engine analyzes the failure and generates a corrective instruction rule.
+* **A/B Validation**: The proposed rule is tested against new task iterations.
+* **Decision & Promotion**: If the rule demonstrates a positive impact, it is promoted to the project-scoped runtime instructions (e.g., `AGENTS.md` or active skillsets). Otherwise, it is discarded.
+
+### 5. Semantic Capability Router with Rate-Wall Failover
+A smart traffic-controller layer manages high-volume workflows:
+* **Embedding Matcher**: Computes cosine similarity between incoming tasks and registered agent profiles to route work to the most capable engine.
+* **Load Balancing**: Distributes concurrent requests based on engine usage gauges and queue size.
+* **Rate-Wall Failover**: If an engine hits an API rate limit or fails, the router dynamically marks the lane as "walled" and transparently reroutes tasks to an active fallback engine.
+
+### 6. Unified OTel Usage Telemetry Bridge
+An integrated usage bridge normalizes telemetry streams from **Claude Code** (OTel spans), **Codex** (Session files), and **Google Antigravity (`agy`)** (Python SDK stream) into a single, standardized pipeline.
+* **Aggregation**: Consolidates tokens, latency profiles, and cost metrics.
+* **TUI/UI Ready**: Outputs a normalized JSON feed to power dashboards displaying live and weekly quota consumption.
+
+---
+
+## 🚧 Implementation & Integration Status
+* **Core Functionality**: Fully implemented and active in the orchestration backend.
+* **Dashboard Rendering**: Frontend rendering of the new task usage metadata fields is currently **in progress**.
+* **Usage Telemetry Bridge**: The OpenTelemetry integration is fully functional; production rollouts of the localized streaming collection endpoints are currently **in progress**.
+
+> Full design notes and rationale: see **[WIKI_MMOI_Upgrades.md](WIKI_MMOI_Upgrades.md)**.
 
 ## Deployment: Local / Self-Host vs. VPS / Always-On
 

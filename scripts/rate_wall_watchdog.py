@@ -40,7 +40,7 @@ COMMANDS
 
     python scripts/rate_wall_watchdog.py should-dispatch --engine codex
         Exit 0 if safe to dispatch; non-zero (and print reset time) if codex is
-        walled (>= 99% on either window). Lets Andy skip a walled engine.
+        walled (>= 99% on either window). Lets Root skip a walled engine.
 
 stdlib-only. Non-codex engines are always dispatchable here (agy/claude expose
 no comparable wall telemetry locally).
@@ -49,7 +49,8 @@ no comparable wall telemetry locally).
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import codex_usage

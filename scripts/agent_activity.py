@@ -28,7 +28,7 @@ ACTIVITY_JS_FILE = ROOT / "dashboard" / "agent_activity.js"
 # ids. The producer scripts and dashboard key off the engine prefix
 # (claude- / agy- / codex-) and the role suffix, not these specific names.
 SEED_AGENT_IDS = [
-    "andy",  # top orchestrator (rename to your own orchestrator id)
+    "root",  # top orchestrator (rename to your own orchestrator id)
     "claude-orchestrator",
     "claude-researcher",
     "claude-coder",

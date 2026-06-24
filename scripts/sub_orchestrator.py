@@ -2,11 +2,11 @@
 """
 sub_orchestrator.py — model a real per-engine sub-orchestrator step.
 
-Today Andy (the top orchestrator) reaches in and dispatches a single worker
+Today Root (the top orchestrator) reaches in and dispatches a single worker
 directly via dispatch_worker.py. The per-engine teams (claude / agy / codex)
 each own a cloned roster of specialists but never actually *orchestrate*.
 
-This CLI gives each engine a sub-orchestrator that behaves like Andy:
+This CLI gives each engine a sub-orchestrator that behaves like Root:
   1. take a GOAL,
   2. decompose it into 2-5 concrete sub-tasks (deterministic, rule-based),
   3. for each sub-task run PTME to pick model + effort,
@@ -40,6 +40,11 @@ from pathlib import Path
 import agent_activity
 import dispatch_worker
 import ptme
+
+try:  # Phase 4 semantic router — optional, guarded.
+    import router as semantic_router
+except Exception:  # pragma: no cover - defensive
+    semantic_router = None  # type: ignore[assignment]
 
 ROOT = Path(__file__).resolve().parent.parent
 PTME_LOG_FILE = ROOT / "logs" / "ptme_decisions.jsonl"
@@ -162,7 +167,24 @@ def _make_sub_task_id(engine: str, base_id: str, index: int) -> str:
     return "{}-{}-S{}".format(engine.upper(), base_id, index)
 
 
+def resolve_engine(engine: str, goal: str) -> tuple[str, dict | None]:
+    """Resolve which engine orchestrates a goal.
+
+    engine == "auto" consults the semantic router (capability + rate-wall
+    failover + load balancing) to pick the engine. An explicit engine is
+    honored unchanged (backward compatible). Falls back to 'claude' if the
+    router is unavailable.
+    """
+    if engine != "auto":
+        return engine, None
+    if semantic_router is None:
+        return "claude", None
+    result = semantic_router.route(task_text=goal)
+    return result["engine"], result
+
+
 def plan(engine: str, goal: str, base_id: str | None = None, dry_run: bool = False) -> dict:
+    engine, route_result = resolve_engine(engine, goal)
     if engine not in VALID_ENGINES:
         raise ValueError("Unsupported engine '{}'".format(engine))
 
@@ -230,6 +252,16 @@ def plan(engine: str, goal: str, base_id: str | None = None, dry_run: bool = Fal
                 worker_id, {"engine": engine, "role": worker_role}
             )
 
+        # Stage the two-tier QA structure for this sub-task (verdicts pending
+        # until the actual runs land). TIER 1 internal same-engine (worker !=
+        # tester), TIER 2 external different-engine QA + security.
+        qa_plan = two_tier_qa(
+            engine=engine,
+            worker_role=worker_role,
+            sub_task_id=sub_task_id,
+            dry_run=dry_run,
+        )
+
         sub_tasks.append(
             {
                 "sub_task_id": sub_task_id,
@@ -239,6 +271,8 @@ def plan(engine: str, goal: str, base_id: str | None = None, dry_run: bool = Fal
                 "worker_id": worker_id,
                 "tester_role": tester_role,
                 "tester_id": tester_id,
+                "internal_qa": qa_plan["internal_qa"],
+                "external_qa": qa_plan["external_qa"],
                 "model": (decision["decided_model"] if decision else rec_model),
                 "effort": (decision["decided_effort"] if decision else rec_effort),
                 "decision_ref": ("{}@{}".format(sub_task_id, decision["ts"]) if decision else None),
@@ -252,8 +286,141 @@ def plan(engine: str, goal: str, base_id: str | None = None, dry_run: bool = Fal
         "base_id": base_id,
         "dry_run": dry_run,
         "planned_at": now_iso(),
+        "routed_via": (route_result.get("chosen_via") if route_result else "explicit engine"),
+        "router_explanation": (route_result.get("explanation") if route_result else None),
         "sub_tasks": sub_tasks,
     }
+
+
+# ---------------------------------------------------------------------------
+# Two-tier QA (owner's explicit ask)
+# ---------------------------------------------------------------------------
+# Map each engine to the OTHER engines that can host an external QA/security
+# gate. External QA must be a DIFFERENT engine than the worker's engine so a
+# team never grades its own homework at the external tier.
+_EXTERNAL_ENGINE_ORDER = ("claude", "codex", "agy")
+
+
+def _internal_tester_role(worker_role: str) -> str:
+    """Pick an INTERNAL same-engine tester role that differs from the worker."""
+    tester = TESTER_FOR_ROLE.get(worker_role, "qa")
+    if tester == worker_role:  # never self-test
+        tester = "security" if worker_role != "security" else "qa"
+    return tester
+
+
+def _external_engine_for(worker_engine: str, prefer: str | None = None) -> str:
+    """Pick an external engine (different from the worker's) for the outer gate."""
+    if prefer and prefer in VALID_ENGINES and prefer != worker_engine:
+        return prefer
+    for eng in _EXTERNAL_ENGINE_ORDER:
+        if eng != worker_engine:
+            return eng
+    return worker_engine  # single-engine degenerate fallback (shouldn't happen)
+
+
+def two_tier_qa(
+    engine: str,
+    worker_role: str,
+    sub_task_id: str,
+    internal_verdict: str | None = None,
+    external_verdict: str | None = None,
+    external_engine: str | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Stage a two-tier QA on a completed worker sub-task.
+
+    TIER 1 — INTERNAL: a different role on the SAME engine team checks the work
+             (worker != tester, same engine). Must PASS before tier 2.
+    TIER 2 — EXTERNAL: a different ENGINE's QA + a security test runs the outer
+             gate (different-engine review + security).
+
+    Verdicts can be supplied (when the run already happened) or left None
+    (staged/pending). The structure is recorded on the ptme decision record as
+    internal_qa{tester, engine, role, verdict} and external_qa{tester, engine,
+    role, verdict, security{tester, verdict}}. Returns that structure.
+
+    Worker != tester is asserted at BOTH tiers:
+      * internal tester role != worker role (same engine).
+      * external tester engine != worker engine.
+    """
+    if engine not in VALID_ENGINES:
+        raise ValueError("Unsupported engine '{}'".format(engine))
+
+    internal_role = _internal_tester_role(worker_role)
+    assert internal_role != worker_role, "internal worker==tester (role)"
+    internal_id = "{}-{}".format(engine, internal_role)
+
+    ext_engine = _external_engine_for(engine, prefer=external_engine)
+    assert ext_engine != engine, "external worker==tester (engine)"
+    external_id = "{}-qa".format(ext_engine)
+    security_id = "{}-security".format(ext_engine)
+
+    def _norm(v: str | None) -> str | None:
+        if v is None:
+            return None
+        t = str(v).strip().lower()
+        if t in ("pass", "passed", "ok", "green", "go"):
+            return "pass"
+        if t in ("fail", "failed", "red", "no-go", "nogo", "reject", "rejected"):
+            return "fail"
+        return t or None
+
+    iv = _norm(internal_verdict)
+    # The external tier only runs once internal PASSES (owner's ordering).
+    external_gated = iv == "pass"
+    ev = _norm(external_verdict) if external_gated else None
+
+    internal_qa = {
+        "tier": "internal",
+        "engine": engine,
+        "tester_id": internal_id,
+        "tester_role": internal_role,
+        "verdict": iv,  # None = staged/pending
+    }
+    external_qa = {
+        "tier": "external",
+        "engine": ext_engine,
+        "tester_id": external_id,
+        "tester_role": "qa",
+        "verdict": ev,  # None until internal passes AND it runs
+        "gated_on_internal_pass": external_gated,
+        "security": {
+            "tester_id": security_id,
+            "tester_role": "security",
+            "verdict": (_norm(external_verdict) if external_gated else None),
+        },
+    }
+
+    record = {
+        "sub_task_id": sub_task_id,
+        "worker_role": worker_role,
+        "worker_id": "{}-{}".format(engine, worker_role),
+        "internal_qa": internal_qa,
+        "external_qa": external_qa,
+        "ts": now_iso(),
+    }
+
+    if not dry_run:
+        dispatch_worker._annotate_latest_ptme_for_task(
+            sub_task_id,
+            {"internal_qa": internal_qa, "external_qa": external_qa},
+        )
+    return record
+
+
+def cmd_qa(args: argparse.Namespace) -> int:
+    record = two_tier_qa(
+        engine=args.engine,
+        worker_role=args.worker_role,
+        sub_task_id=args.sub_task_id,
+        internal_verdict=args.internal_verdict,
+        external_verdict=args.external_verdict,
+        external_engine=args.external_engine,
+        dry_run=args.dry_run,
+    )
+    print(json.dumps(record, indent=2, ensure_ascii=False))
+    return 0
 
 
 def record_lesson(orchestrator: str, lesson: str, task_id: str | None = None) -> dict:
@@ -262,7 +429,7 @@ def record_lesson(orchestrator: str, lesson: str, task_id: str | None = None) ->
     orchestrator_stats.py counts these per-orchestrator for the dashboard's
     learning_loops_total. Keeping the schema small and append-only.
     """
-    if orchestrator not in VALID_ENGINES and orchestrator != "andy":
+    if orchestrator not in VALID_ENGINES and orchestrator != "root":
         raise ValueError("Unsupported orchestrator '{}'".format(orchestrator))
     record = {
         "orchestrator": orchestrator,
@@ -317,12 +484,27 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_plan = sub.add_parser("plan", help="Decompose a goal and assign this engine's specialists")
-    p_plan.add_argument("--engine", required=True, choices=VALID_ENGINES)
+    p_plan.add_argument(
+        "--engine",
+        required=True,
+        choices=VALID_ENGINES + ("auto",),
+        help="Orchestrating engine, or 'auto' to let the semantic router pick.",
+    )
     p_plan.add_argument("--goal", required=True)
     p_plan.add_argument("--base-id", help="Optional base id for sub-task ids (default: slug of goal)")
     p_plan.add_argument("--dry-run", action="store_true", help="Plan only; do not write logs or activity")
     p_plan.add_argument("--json", action="store_true", help="Emit the full plan as JSON")
     p_plan.set_defaults(func=cmd_plan)
+
+    p_qa = sub.add_parser("qa", help="Stage/record two-tier QA (internal then external) on a sub-task")
+    p_qa.add_argument("--engine", required=True, choices=VALID_ENGINES)
+    p_qa.add_argument("--worker-role", required=True, choices=dispatch_worker.VALID_ROLES)
+    p_qa.add_argument("--sub-task-id", required=True)
+    p_qa.add_argument("--internal-verdict", help="pass/fail from the internal same-engine tester")
+    p_qa.add_argument("--external-verdict", help="pass/fail from the external different-engine QA+security")
+    p_qa.add_argument("--external-engine", choices=VALID_ENGINES, help="Preferred external engine (must differ from --engine)")
+    p_qa.add_argument("--dry-run", action="store_true")
+    p_qa.set_defaults(func=cmd_qa)
 
     p_lesson = sub.add_parser("lesson", help="Record a learning-loop entry for an orchestrator")
     p_lesson.add_argument("--orchestrator", required=True)
