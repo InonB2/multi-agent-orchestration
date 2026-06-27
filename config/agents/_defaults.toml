@@ -22,7 +22,7 @@ resume_queue  = true           # add to resume queue on rate limit hit
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"
 
 [provider]
 # "cli" = invoke via a local CLI tool (Claude Code, Codex CLI, etc.)

@@ -1,4 +1,4 @@
-# finn.toml — The Infrastructure Triage Engineer
+# infra.toml — The Infrastructure Triage Engineer
 
 [agent]
 max_task_size   = "M"
@@ -17,4 +17,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"

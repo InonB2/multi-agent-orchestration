@@ -26,7 +26,7 @@ def _valid_spec(task_id, complexity="M", assigned_to="codex"):
         "title": "Spec task",
         "complexity": complexity,
         "created_at": "2026-06-22T00:00:00+00:00",
-        "created_by": "andy",
+        "created_by": "orchestrator",
         "what_is_done": "Initial analysis completed.",
         "what_remains": "Implement the runtime changes.",
         "exact_next_step": "Wire the validation into the supervisor.",

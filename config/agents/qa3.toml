@@ -1,10 +1,10 @@
-# quinn.toml — The Logic & Content Reviewer
+# qa3.toml — The Logic & Content Reviewer
 
 [agent]
 max_task_size   = "M"
 preferred_model = "claude-code"
-qa_gate         = "jasmin"     # Security flags escalated to Jasmin
-handoff_to      = "jasmin"
+qa_gate         = "security"     # Security flags escalated to Security
+handoff_to      = "security"
 
 [task_types]
 accepts = ["logic review", "content review", "python script review", "sql migration review", "ci config review", "automation validation", "accuracy check", "correctness audit", "script qa"]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"

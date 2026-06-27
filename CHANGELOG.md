@@ -4,6 +4,11 @@ All notable changes to this project will be documented here.
 
 ## [Unreleased]
 
+### Changed
+- **2026-06-27 public-readiness docs pass:** refreshed `README.md` to describe the framework in role-based terms, expanded the shipped script surface (`task_router`, `coordinator`, `checkpoint`, `task_spec`, `agent_config`, `llm_provider`, `model_supervisor`, `preflight_auth`, `worktree_manager`, `worker_wrapper`), and clarified that Team-of-Teams (ToT) plus Per-Task Model & Effort (PTME) are present but still in development.
+- **Role-name sanitization:** public-facing docs now avoid private roster naming and describe agents by role/capability.
+- **Capability-based routing + spec gate:** changelog/docs now consistently describe keyword/capability routing and the pre-task spec requirement for `M`/`L`/`XL` work.
+
 ### Added
 - **v2 runtime enforcement & team-of-teams (PTME):** `model_supervisor.py run` blocks `M`/`L`/`XL` tasks without a valid spec, reloads queued checkpoint context into the next worker prompt, and writes an audited PTME decision trail to `logs/ptme_decisions.jsonl`. Adds `model_supervisor.orchestrate_worker_plan(...)` as a tested local-orchestrator interface for multi-specialized workers (interface-only today; default CLI still dispatches one worker per task). See Wiki: V2-Runtime-Enforcement.
 
@@ -48,7 +53,7 @@ All notable changes to this project will be documented here.
 - Atomic file writes in `task_router.py` and `task_spec.py` (previously used `write_text()` directly)
 - Generalized internal-specific TOML references in 6 agent config files
 - Context file comments in `antigravity.toml` and `codex.toml` now use generic adopter instructions
-- Cyrillic character typo in `sage.toml` task type keyword
+- Cyrillic character typo in `brand.toml` task type keyword
 
 ## [0.1.0] — 2026-06-09
 

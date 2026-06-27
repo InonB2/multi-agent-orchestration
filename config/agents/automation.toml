@@ -1,10 +1,10 @@
-# mack.toml — The Automation Engineer
+# automation.toml — The Automation Engineer
 
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = "jasmin"     # Jasmin reviews all automation scripts for security
-handoff_to      = "jasmin"
+qa_gate         = "security"     # Security reviews all automation scripts for security
+handoff_to      = "security"
 
 # Example task types — replace with your own automation and integration tools
 [task_types]
@@ -17,4 +17,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"

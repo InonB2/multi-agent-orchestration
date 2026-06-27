@@ -1,11 +1,18 @@
 # Multi-Agent Orchestration Framework
 
-> Route every task to the right AI model. Checkpoint mid-task state. Resume after rate limits.
+> Route work by role and capability, checkpoint task state, and resume cleanly after interruptions or rate limits.
 
 [![CI](https://github.com/InonB2/multi-agent-orchestration/actions/workflows/ci.yml/badge.svg)](https://github.com/InonB2/multi-agent-orchestration/actions/workflows/ci.yml)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-green.svg)](scripts/)
+
+## Project Status
+
+The current public framework is a **role-based orchestration skeleton** for AI task queues.
+
+- Stable today: task routing, task lifecycle management, pre-task specs, checkpoints, agent config loading, CLI/API provider execution, and isolated worker utilities.
+- In development: **Team-of-Teams (ToT)** supervision and **Per-Task Model & Effort (PTME)** policy. These are present in the repo and covered by tests, but should be treated as evolving runtime patterns rather than a finished multi-team platform.
 
 ## The Problem
 
@@ -37,19 +44,24 @@ cd multi-agent-orchestration
 ## Architecture
 
 ```
-Project → Orchestrator (Andy / your orchestrator)
-         ├─ Decomposes project into tasks
+Project → Orchestrator role
+         ├─ Decomposes work into tasks
          ├─ Estimates complexity (S/M/L/XL)
-         ├─ Routes each task to the best model via capability table
-         └─ Writes pre-task spec (what/remaining/next step/criteria)
+         ├─ Routes by capability / keyword scoring
+         └─ Writes pre-task spec (done/remaining/next/criteria)
                 │
                 ▼
-         Per-model Coordinator
-         ├─ Model claims task
-         ├─ Executes with mid-task checkpoints
+         Role agent or provider runner
+         ├─ Claims task
+         ├─ Executes with checkpoints
          ├─ On rate limit: writes checkpoint → queues resume
          └─ On completion: QA gate → return to orchestrator
 ```
+
+Public agent configs are role-oriented. The repo includes configs such as
+`orchestrator`, `researcher`, `coder`, `security`, `qa`, `web`, `data`,
+`designer`, `ops`, `automation`, and hiring/content variants. Provider selection
+is a separate layer handled by routing and `llm_provider.py`.
 
 ## Quick Start
 
@@ -86,7 +98,7 @@ python scripts/agent_config.py show --agent codex
 
 ## Team-of-Teams (ToT) + Per-Task Model & Effort (PTME)
 
-Two additive, backward-compatible upgrades on top of the core loop:
+These are active development tracks layered on top of the core loop:
 
 - **Per-Task Model & Effort (PTME)** — `llm_provider.py run` selects the model **and**
   reasoning-effort level per task, by a clear precedence: CLI flags → per-task
@@ -109,7 +121,7 @@ Two additive, backward-compatible upgrades on top of the core loop:
   results ([`worker_wrapper.py`](scripts/worker_wrapper.py)), and aggregates the
   outcome. Concurrency caps: codex 3, antigravity 2, claude-code 1. The specialized
   multi-subagent local-orchestrator path is a tested interface today; the default
-  shipped CLI path still dispatches one worker per claimed task.
+  shipped CLI path remains conservative and should be treated as an evolving MVP.
 
   ```bash
   python scripts/model_supervisor.py run --model codex --dry-run
@@ -322,12 +334,17 @@ Ideal for complex, multi-agent pipelines with long-running research or developme
 
 | Script | Purpose |
 |--------|---------|
-| `task_router.py` | Routes tasks to claude-code, codex, or antigravity via keyword-heuristic scoring across three providers |
-| `checkpoint.py` | Saves mid-task state; appends to resume queue; exposes reload helpers for resumable work; marks resumed |
-| `coordinator.py` | Task lifecycle: claim → update → checkpoint → mark-tested → mark-done, including worker≠tester enforcement at `mark-tested` |
-| `task_spec.py` | Enforces pre-task specs for M/L/XL tasks before execution |
-| `agent_config.py` | Loads per-agent TOML config with project-level deep-merge overrides |
-| `llm_provider.py` | LLM-agnostic provider abstraction — CLI tools or direct API endpoints, plus PTME decision logging |
+| `task_router.py` | Scores task text against capability keywords and writes `preferred_provider` routing decisions |
+| `coordinator.py` | Task lifecycle manager: claim, update, checkpoint, mark-tested, mark-done |
+| `checkpoint.py` | Saves checkpoint state, manages the resume queue, and reloads resumable context |
+| `task_spec.py` | Creates and validates pre-task specs for `M`/`L`/`XL` work |
+| `agent_config.py` | Loads merged role-agent TOML config from `config/agents/` |
+| `llm_provider.py` | Executes tasks through CLI or API providers and records PTME decisions when used |
+| `model_supervisor.py` | In-development ToT supervisor for per-model task selection, claim, dispatch, and aggregation |
+| `preflight_auth.py` | Optional CLI-auth warm-up before unattended or pooled execution |
+| `worktree_manager.py` | Creates and destroys isolated git worktrees for workers |
+| `worker_wrapper.py` | Writes deterministic worker result artifacts |
+| `config_loader.py` | Shared config loading helpers for TOML-backed scripts |
 
 ## Task Schema
 
@@ -350,7 +367,7 @@ Each task in `active_tasks.json` follows this structure:
 |-------|----------|--------|-------------|
 | `task_id` | Yes | `[A-Za-z0-9_-]+` | Unique identifier |
 | `title` | Yes | string | Plain-language task description — used by the router |
-| `assigned_to` | Yes | agent name | Which agent owns this task |
+| `assigned_to` | Yes | agent/role config name | Which role agent owns this task |
 | `status` | Yes | `backlog`, `pending`, `in_progress`, `blocked`, `tested`, `done` | Current state (`tested` = QA-signed-off, set by `coordinator.py mark-tested`) |
 | `priority` | No | `high`, `medium`, `low` | Used for ordering |
 | `complexity` | No | `S`, `M`, `L`, `XL` | Used to decide if a spec is required before supervisor dispatch (`S` exempt) |
@@ -504,7 +521,7 @@ This enforces clarity before execution and makes handoffs between models determi
 
 ## v2: Runtime Enforcement & Team-of-Teams
 
-V2 adds runtime tightening around the existing orchestration loop rather than a new platform layer. In shipped code, `model_supervisor.py run` now blocks `M`/`L`/`XL` tasks without a valid spec, reloads queued checkpoint context into the next worker prompt, and keeps a PTME audit trail in `logs/ptme_decisions.jsonl`. The per-model supervisor still claims tasks under a CAS guard, runs them in isolated worktrees, and aggregates deterministic result paths.
+V2 adds runtime tightening around the existing orchestration loop rather than a new platform layer. In current code, `model_supervisor.py run` blocks `M`/`L`/`XL` tasks without a valid spec, reloads queued checkpoint context into the next worker prompt, and keeps a PTME audit trail in `logs/ptme_decisions.jsonl`. The per-model supervisor claims tasks under a CAS guard, runs them in isolated worktrees, and aggregates deterministic result paths, but the broader Team-of-Teams operating model is still in development.
 
 V2 also adds tester identity tracking on `coordinator.py mark-tested`: when `--tested-by` is supplied, self-testing is rejected if that identity matches the worker/assignee unless `--force` is used. The branch also ships `model_supervisor.orchestrate_worker_plan(...)` as a tested local-orchestrator interface for multi-specialized worker specs, but that path is interface-only today; the default CLI supervisor still dispatches one worker per claimed task.
 

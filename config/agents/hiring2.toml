@@ -1,4 +1,4 @@
-# nolan.toml — The HR Agent (Agent Creator & Integrator)
+# hiring2.toml — The HR Agent (Agent Creator & Integrator)
 
 [agent]
 max_task_size   = "M"
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "agents/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"

@@ -1,10 +1,10 @@
-# silas.toml — The Database Architect
+# data.toml — The Database Architect
 
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = "jasmin"     # Jasmin reviews all schema migrations for security
-handoff_to      = "jasmin"
+qa_gate         = "security"     # Security reviews all schema migrations for security
+handoff_to      = "security"
 
 [task_types]
 accepts = ["schema", "migration", "rls", "database", "sql", "supabase", "sqlite", "pgvector", "seed data", "type codegen", "db design", "index", "trigger", "foreign key"]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"
