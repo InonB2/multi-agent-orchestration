@@ -104,7 +104,7 @@ and security audits are never routed to `agy` (charter limits).
 ### Architecture
 
 ```
-Orchestrator (Andy)
+Orchestrator (Orchestrator)
    │  populates tasks/active_tasks.json, triggers supervisors
    ▼
 model_supervisor.py  (one per model: codex, antigravity, claude-code)
@@ -167,7 +167,7 @@ powershell -ExecutionPolicy Bypass -File scripts\unattended_loop.ps1   # Windows
 ### Local-orchestrator interface
 
 `model_supervisor.orchestrate_worker_plan(...)` is now a tested interface for a
-local "Andy" to decide PTME model+effort for multiple specialized sub-agents,
+local "Orchestrator" to decide PTME model+effort for multiple specialized sub-agents,
 record those decisions, and dispatch them in parallel through injected worker
 functions. What is real today: the decision logging, PTME resolution, and
 parallel dispatch interface. What remains interface-only: the default shipped CLI

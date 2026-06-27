@@ -37,7 +37,7 @@ cd multi-agent-orchestration
 ## Architecture
 
 ```
-Project → Orchestrator (Andy / your orchestrator)
+Project → Orchestrator (Orchestrator / your orchestrator)
          ├─ Decomposes project into tasks
          ├─ Estimates complexity (S/M/L/XL)
          ├─ Routes each task to the best model via capability table

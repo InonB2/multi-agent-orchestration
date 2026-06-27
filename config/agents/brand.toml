@@ -1,9 +1,9 @@
-# sage.toml — The LinkedIn Strategist
+# brand.toml — The LinkedIn Strategist
 
 [agent]
 max_task_size   = "M"
 preferred_model = "claude-code"
-qa_gate         = ""           # Posts reviewed by Andy before publishing
+qa_gate         = ""           # Posts reviewed by Orchestrator before publishing
 handoff_to      = ""
 
 # Example task types — replace with your own brand/content agent specializations
@@ -17,4 +17,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/posts/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"

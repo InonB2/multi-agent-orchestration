@@ -1,9 +1,9 @@
-# vera.toml — The QA Inspector
+# qa2.toml — The QA Inspector
 
 [agent]
 max_task_size   = "M"
 preferred_model = "claude-code"
-qa_gate         = ""           # Vera IS the QA gate for UI; no second layer
+qa_gate         = ""           # Qa2 IS the QA gate for UI; no second layer
 handoff_to      = ""
 
 [task_types]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"

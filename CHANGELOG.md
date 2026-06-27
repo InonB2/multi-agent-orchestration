@@ -48,7 +48,7 @@ All notable changes to this project will be documented here.
 - Atomic file writes in `task_router.py` and `task_spec.py` (previously used `write_text()` directly)
 - Generalized internal-specific TOML references in 6 agent config files
 - Context file comments in `antigravity.toml` and `codex.toml` now use generic adopter instructions
-- Cyrillic character typo in `sage.toml` task type keyword
+- Cyrillic character typo in `brand.toml` task type keyword
 
 ## [0.1.0] — 2026-06-09
 

@@ -5,7 +5,7 @@ agent_config.py — Load and display per-agent TOML config with project-level ov
 Loads _defaults.toml first, then deep-merges the agent-specific TOML on top.
 
 Usage:
-    python scripts/agent_config.py get  --agent andy  --key agent.max_task_size
+    python scripts/agent_config.py get  --agent orchestrator  --key agent.max_task_size
     python scripts/agent_config.py show --agent codex
     python scripts/agent_config.py list-agents
 """
@@ -162,7 +162,7 @@ def main():
 
     # get
     p_get = sub.add_parser("get", help="Return a single config value for an agent.")
-    p_get.add_argument("--agent", required=True, help="Agent name (e.g. andy, codex)")
+    p_get.add_argument("--agent", required=True, help="Agent name (e.g. orchestrator, codex)")
     p_get.add_argument("--key",   required=True,
                        help="Dot-notation key, e.g. agent.max_task_size")
 

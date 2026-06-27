@@ -188,8 +188,10 @@ def test_supervise_dry_run_does_not_claim(tmp_path):
     def boom_claimer(task_id, model):
         raise AssertionError("dry-run must not claim")
 
-    summary = ms.supervise("codex", tasks_file=str(tf), runner=_ok_runner,
-                            claimer=boom_claimer, dry_run=True)
+    summary = ms.supervise(
+        "codex", tasks_file=str(tf), runner=_ok_runner,
+        claimer=boom_claimer, dry_run=True,
+    )
     assert summary["dry_run"] is True
     assert summary["claimed"] == []
     assert summary["candidates"] == ["C-1", "C-2"]
@@ -199,6 +201,8 @@ def test_supervise_default_concurrency_cap(tmp_path):
     """When max_workers is None, the model's MODEL_CONCURRENCY cap is used."""
     tf = tmp_path / "active_tasks.json"
     tf.write_text(json.dumps({"tasks": []}), encoding="utf-8")
-    summary = ms.supervise("codex", tasks_file=str(tf), runner=_ok_runner,
-                            claimer=lambda *a: True)
+    summary = ms.supervise(
+        "codex", tasks_file=str(tf), runner=_ok_runner,
+        claimer=lambda *a: True,
+    )
     assert summary["max_workers"] == ms.MODEL_CONCURRENCY["codex"]

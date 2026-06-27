@@ -1,10 +1,10 @@
-# tomy.toml — The Researcher
+# researcher.toml — The Researcher
 
 [agent]
 max_task_size   = "L"
 preferred_model = "claude-code"
-qa_gate         = ""           # Research deliverables reviewed by Andy or requesting agent
-handoff_to      = "yoni"       # Hand off implementation follow-ups to Yoni
+qa_gate         = ""           # Research deliverables reviewed by Orchestrator or requesting agent
+handoff_to      = "coder"       # Hand off implementation follow-ups to Coder
 
 [task_types]
 accepts = ["research", "summarize", "analyze", "evaluate", "benchmark", "compare", "literature review", "web search", "api exploration", "tech stack analysis", "documentation", "transcript"]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/research/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"

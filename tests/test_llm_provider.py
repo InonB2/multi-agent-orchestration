@@ -7,7 +7,6 @@ Run with:  pytest tests/test_llm_provider.py -v
 import argparse
 import io
 import json
-import os
 import sys
 import urllib.error
 from pathlib import Path
@@ -42,7 +41,7 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"
 
 [provider]
 type = "cli"

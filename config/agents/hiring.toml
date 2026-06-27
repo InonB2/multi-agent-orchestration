@@ -1,10 +1,10 @@
-# pat.toml — The HR Researcher
+# hiring.toml — The HR Researcher
 
 [agent]
 max_task_size   = "M"
 preferred_model = "claude-code"
-qa_gate         = "nolan"      # Nolan validates profiles before agent creation
-handoff_to      = "nolan"
+qa_gate         = "hiring2"      # Hiring2 validates profiles before agent creation
+handoff_to      = "hiring2"
 
 [task_types]
 accepts = ["profile", "agent brief", "capability research", "role blueprint", "candidate profile", "talent analysis"]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "scratchpad/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"

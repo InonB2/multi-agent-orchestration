@@ -1,10 +1,10 @@
-# yoni.toml — The Lead Coder
+# coder.toml — The Lead Coder
 
 [agent]
 max_task_size   = "XL"
 preferred_model = "claude-code"
-qa_gate         = "jasmin"     # All Yoni output reviewed by Jasmin before done
-handoff_to      = "jasmin"
+qa_gate         = "security"     # All Coder output reviewed by Security before done
+handoff_to      = "security"
 
 [task_types]
 accepts = ["implement", "refactor", "unit test", "integration test", "api", "endpoint", "migration", "schema", "fix", "bug", "patch", "typescript", "python script", "monorepo", "build", "compile", "multi-file", "debug", "trace"]
@@ -16,4 +16,4 @@ resume_queue  = true
 
 [output]
 deliverable_path = "owner_inbox/"
-report_path      = "agents/andy/inbox/"
+report_path      = "agents/orchestrator/inbox/"
