@@ -13,7 +13,7 @@
     {
       "task_id": "EXAMPLE-002",
       "title": "Research competitor pricing strategies",
-      "assigned_to": "tomy",
+      "assigned_to": "researcher",
       "status": "pending",
       "priority": "medium",
       "complexity": "S",
@@ -22,7 +22,7 @@
     {
       "task_id": "EXAMPLE-003",
       "title": "Design onboarding flow for mobile users",
-      "assigned_to": "lena",
+      "assigned_to": "designer",
       "status": "pending",
       "priority": "low",
       "complexity": "S",

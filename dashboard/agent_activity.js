@@ -6,7 +6,7 @@ window.AGENT_ACTIVITY = {
   },
   "entries": [
     {
-      "agent": "andy",
+      "agent": "orchestrator",
       "task_id": null,
       "model": null,
       "effort": null,
