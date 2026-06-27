@@ -7,7 +7,6 @@ Run with:  pytest tests/test_llm_provider.py -v
 import argparse
 import io
 import json
-import os
 import sys
 import urllib.error
 from pathlib import Path

@@ -6,7 +6,6 @@ Run with:  pytest tests/
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -17,8 +16,8 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from checkpoint import _validate_task_id           # noqa: E402
-from task_router import score_task, pick_provider, route_tasks, TASKS_FILE as ROUTER_TASKS_FILE  # noqa: E402
-from task_spec import SPECS_DIR, REQUIRED_FIELDS, REQUIRED_CONTENT_FIELDS  # noqa: E402
+from task_router import score_task, pick_provider, route_tasks  # noqa: E402
+from task_spec import REQUIRED_FIELDS  # noqa: E402
 from agent_config import deep_merge, get_nested, list_agent_names, load_agent_config  # noqa: E402
 
 
@@ -410,11 +409,7 @@ def test_routing_build_not_false_positive_in_rebuild():
 
 def test_routing_tiebreak_codex_beats_antigravity():
     """When codex and antigravity score equally, codex must win (priority order)."""
-    # "analyze" → antigravity +1; "fix" → codex +1 → equal tie at 1 each
-    task = {"title": "analyze and fix the bug", "notes": ""}
-    scores = score_task(task)
-    # "analyze" hits antigravity, "fix" and "bug" hit codex → codex wins 2 vs 1 (not a tie)
-    # Use a cleaner tie: only one keyword from each side
+    # Use a clean 1:1 keyword tie so priority order decides the winner.
     task_tie = {"title": "analyze and fix", "notes": ""}
     scores_tie = score_task(task_tie)
     # "analyze" → antigravity=1, "fix" → codex=1, claude-code=0

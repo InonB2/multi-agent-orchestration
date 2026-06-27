@@ -2,6 +2,7 @@
 # Single source of truth for lint config — referenced by both CI
 # (.github/workflows/ci.yml) and CONTRIBUTING.md. Run: flake8 scripts/
 max-line-length = 120
+exclude = scratchpad_e2e
 
 # Intentional style in this codebase:
 #   E221 / E241 / E272 — column-aligned assignments and dict literals
