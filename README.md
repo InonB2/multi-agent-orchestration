@@ -133,6 +133,16 @@ Full guide, config keys, mapping table, and safety properties:
 VPS, with the reference `systemd` unit/timer under [`deploy/vps/`](deploy/vps/)), see
 the deployment section below.
 
+## Dashboard & Analytics
+
+A self-contained dashboard lives in [`dashboard/`](dashboard/) — open `dashboard/index.html`. It shows
+live agent/task status, orchestrator stats, a live-task panel, and per-engine usage/analytics, all from
+static `*.js`/`*.json` files the engine writes (no server). Generate the data with
+`python scripts/orchestrator_stats.py`, `agent_activity.py`, and `build_analytics.py`. The learning
+engine (`learning_loop.py`) maintains an agent-strength scoreboard and reflects on model/effort choices
+after each QA sign-off; `ptme.py` is the Per-Task Model & Effort engine; `sub_orchestrator.py` lets an
+orchestrator spawn parallel sub-workers. See [`dashboard/README.md`](dashboard/README.md) and the Wiki.
+
 ## Deployment: Local / Self-Host vs. VPS / Always-On
 
 
