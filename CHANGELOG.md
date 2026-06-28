@@ -4,6 +4,18 @@ All notable changes to this project will be documented here.
 
 ## [Unreleased]
 
+### Added — Orchestration dashboard + analytics/learning engine (productization)
+- **Self-contained dashboard** (`dashboard/`): live agent/task status, orchestrator stats, live-task
+  panel, and per-engine usage/analytics — served from static `*.js`/`*.json` the engine writes. See
+  `dashboard/README.md` and Wiki: Agent-Dashboard.
+- **Engine scripts:** `learning_loop.py` (agent-strength scoreboard + post-QA model/effort reflection),
+  `ptme.py` (Per-Task Model & Effort engine), `sub_orchestrator.py` (an orchestrator can spawn parallel
+  sub-workers), `parallel_dispatch.py`, `router.py`, `build_analytics.py`, `orchestrator_stats.py`,
+  `agent_activity.py`, `usage_bridge/` (per-engine usage ingestion), `codex_usage.py` /
+  `extract_codex_usage.py`, `rate_wall_watchdog.py`, `v2_dispatch_log.py`. All with test coverage.
+- **Per-engine team profiles** (`agents/teams/{claude,codex,agy}/*.md`): role-based specialist
+  profiles per engine. See `agents/teams/AGENT_PROFILE_ARCHITECTURE.md` and Wiki: MMOI-Upgrades.
+
 ### Changed
 - **2026-06-27 public-readiness docs pass:** refreshed `README.md` to describe the framework in role-based terms, expanded the shipped script surface (`task_router`, `coordinator`, `checkpoint`, `task_spec`, `agent_config`, `llm_provider`, `model_supervisor`, `preflight_auth`, `worktree_manager`, `worker_wrapper`), and clarified that Team-of-Teams (ToT) plus Per-Task Model & Effort (PTME) are present but still in development.
 - **Role-name sanitization:** public-facing docs now avoid private roster naming and describe agents by role/capability.
