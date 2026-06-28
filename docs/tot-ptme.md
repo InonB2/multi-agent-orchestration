@@ -101,7 +101,7 @@ and security audits are never routed to `agy` (charter limits).
 ### Architecture
 
 ```
-Orchestrator (Andy)
+Orchestrator
    │  populates tasks/active_tasks.json, triggers supervisors
    ▼
 model_supervisor.py  (one per model: codex, antigravity, claude-code)

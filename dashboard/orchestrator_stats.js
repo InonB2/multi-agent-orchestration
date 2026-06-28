@@ -4,8 +4,8 @@ window.ORCH_STATS = {
   },
   "orchestrators": [
     {
-      "id": "andy",
-      "name": "Andy",
+      "id": "orchestrator",
+      "name": "Orchestrator",
       "team_size": 14,
       "running_now": 0,
       "tasks_done_total": 0,

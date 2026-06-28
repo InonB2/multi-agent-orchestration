@@ -6,7 +6,7 @@
 The Agent Dashboard is a single-file, zero-dependency view of a running MMOI
 multi-engine agent team. It answers, at a glance:
 
-- Which of the four orchestrators (Andy / Claude / Antigravity / Codex) is active?
+- Which of the four orchestrators (Orchestrator / Claude / Antigravity / Codex) is active?
 - Which specialist agents are running right now, on which engine team?
 - What tasks are in flight, and what model + effort was each dispatched with?
 - How much rate-limit budget is left, where the engine actually reports it?
