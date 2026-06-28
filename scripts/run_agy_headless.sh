@@ -4,7 +4,8 @@
 # On a headless Linux VPS the Antigravity CLI (`agy`) can hang waiting for a GNOME
 # keyring / D-Bus session that does not exist under cron/systemd. This wrapper
 # starts a throwaway dbus session and unlocks a keyring before exec'ing agy, and
-# exports TERM=xterm to prevent the no-TTY hang.
+# exports TERM=xterm. A real PTY (via `script`) is required because --print drops
+# stdout without one.
 #
 # NO SECRETS: the keyring password is read from the env var named by
 # AGY_KEYRING_PASSWORD_ENV (default: AGY_KEYRING_PASSWORD). This script never
@@ -22,10 +23,26 @@ KEYRING_PW="${!PW_ENV:-}"
 
 run_agy() {
   if [ -n "$KEYRING_PW" ] && command -v gnome-keyring-daemon >/dev/null 2>&1; then
-    # Feed the password on stdin to unlock the login keyring, then run agy.
     printf '%s' "$KEYRING_PW" | gnome-keyring-daemon --unlock >/dev/null 2>&1 || true
   fi
-  exec agy "$@"
+  exec_agy_in_pty "$@"
+}
+
+# Run agy inside a real pseudo-terminal. agy --print drops stdout with no TTY
+# (antigravity-cli #76, gemini-cli #27466); TERM alone is not enough. `script`
+# is the portable POSIX PTY allocator. (Windows equivalent: ConPTY via pywinpty.)
+exec_agy_in_pty() {
+  if command -v script >/dev/null 2>&1; then
+    local cmd="agy" a
+    for a in "$@"; do cmd="$cmd $(printf '%q' "$a")"; done
+    if script -qec true /dev/null >/dev/null 2>&1; then
+      exec script -qec "$cmd" /dev/null      # util-linux
+    else
+      exec script -q /dev/null agy "$@"       # BSD/macOS
+    fi
+  else
+    exec agy "$@"                              # no PTY available (output may drop)
+  fi
 }
 
 if command -v dbus-run-session >/dev/null 2>&1; then
