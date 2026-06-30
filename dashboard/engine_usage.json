@@ -1,0 +1,36 @@
+{
+  "_comment": "Sample Engine Usage payload. Regenerate from your own environment with scripts/usage_bridge/usage_bridge_reader.py. Every block carries an explicit source + confidence label; a CLI that exposes no quota percent reports real token counts instead of a fabricated percent.",
+  "updated_at": "1970-01-01T00:00:00+00:00",
+  "codex": {
+    "weekly_pct": 0.0,
+    "five_h_pct": 0.0,
+    "resets": {
+      "primary_resets_local": null,
+      "weekly_resets_local": null
+    },
+    "source": "codex session rollout (local)",
+    "confidence": "real"
+  },
+  "agy": {
+    "gemini": {
+      "weekly_pct": 0.0,
+      "weekly_refresh": null,
+      "five_h_pct": 0.0
+    },
+    "claude_gpt": {
+      "weekly_pct": 0.0,
+      "weekly_refresh": null,
+      "five_h_pct": 0.0
+    },
+    "source": "agy /usage (pty)",
+    "confidence": "real",
+    "note": "agy runs Gemini and Claude/GPT-OSS on separate quota pools; each is reported independently."
+  },
+  "claude": {
+    "tokens_7d": 0,
+    "pct": null,
+    "source": "logs/usage.jsonl",
+    "confidence": "real",
+    "note": "real tokens from logged tasks (rolling 7d); the Claude CLI exposes no quota percent, so no percent is shown - wire OTel for a real %"
+  }
+}
