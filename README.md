@@ -61,7 +61,9 @@ Project → Orchestrator role
 Public agent configs are role-oriented. The repo includes configs such as
 `orchestrator`, `researcher`, `coder`, `security`, `qa`, `web`, `data`,
 `designer`, `ops`, `automation`, and hiring/content variants. Provider selection
-is a separate layer handled by routing and `llm_provider.py`.
+is a separate layer handled by routing and `llm_provider.py`. The semantic
+router also consults [`scripts/routing_table.py`](scripts/routing_table.py) for
+a small role-to-engine advisory order used only as a tie-break nudge.
 
 ## Quick Start
 
@@ -106,6 +108,9 @@ These are active development tracks layered on top of the core loop:
   TOML → agent default → legacy bare binary. Codex gets `-m <model> -c
   model_reasoning_effort="<effort>"`; `agy` gets `--model <slug>` with `TERM=xterm`.
   Each resolution appends one JSONL audit record to `logs/ptme_decisions.jsonl`.
+  PTME defaults stay engine-native, but an explicit non-native model is accepted
+  only when that engine's CLI capability allows the model family; unknown model
+  slugs fail closed back to the engine-native default.
 
   ```bash
   python scripts/llm_provider.py run --agent codex --task-id TASK-001 --prompt "..."
@@ -141,7 +146,9 @@ static `*.js`/`*.json` files the engine writes (no server). Generate the data wi
 `python scripts/orchestrator_stats.py`, `agent_activity.py`, and `build_analytics.py`. The learning
 engine (`learning_loop.py`) maintains an agent-strength scoreboard and reflects on model/effort choices
 after each QA sign-off; `ptme.py` is the Per-Task Model & Effort engine; `sub_orchestrator.py` lets an
-orchestrator spawn parallel sub-workers. See [`dashboard/README.md`](dashboard/README.md) and the Wiki.
+orchestrator spawn parallel sub-workers. `scripts/usage_bridge/usage_bridge_reader.py` reports codex
+quota windows, claude token totals, and exported agy `/usage` groups when available, always with an
+explicit source/confidence label. See [`dashboard/README.md`](dashboard/README.md) and the Wiki.
 
 ## Deployment: Local / Self-Host vs. VPS / Always-On
 

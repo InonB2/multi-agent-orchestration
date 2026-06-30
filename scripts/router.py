@@ -33,6 +33,7 @@ from pathlib import Path
 
 import ptme
 import role_scoring
+import routing_table
 
 try:  # optional: promoted rules consultation (guarded — empty/missing = no-op)
     import learning_loop
@@ -92,6 +93,7 @@ class RouterConfig:
     near_wall_pct: float = 90.0           # weekly usage at/above this = avoid hard
     near_wall_penalty: float = 5.0        # extra penalty once near the wall
     capability_weight: float = 1.0        # multiplier on the raw capability match
+    advisory_bonus: float = 0.35          # tie-break nudge for role-advised engine
     rules_path: Path | None = None        # promoted_rules.json (None = default)
 
 
@@ -195,6 +197,7 @@ def _score_engine(
     task_text: str,
     engine: str,
     config: RouterConfig,
+    role: str | None = None,
     load: dict | None = None,
 ) -> dict:
     cap, matched = capability_score(task_text, engine)
@@ -222,12 +225,18 @@ def _score_engine(
         penalty += run_pen
         reasons.append("{} running now (-{:.2f})".format(running, run_pen))
 
-    final = cap - penalty
+    advisory_engine = routing_table.advisory_engine_for_role(role)
+    bonus = config.advisory_bonus if advisory_engine == engine else 0.0
+    if bonus:
+        reasons.append("role advisory {} (+{:.2f})".format(role, bonus))
+
+    final = cap - penalty + bonus
     return {
         "engine": engine,
         "capability_score": round(cap, 4),
         "matched": matched,
         "load_penalty": round(penalty, 4),
+        "advisory_bonus": round(bonus, 4),
         "final_score": round(final, 4),
         "weekly_pct": weekly,
         "running_now": running,
@@ -289,7 +298,16 @@ def route(
         # Everything walled — fail open to the most-capable candidate by
         # capability alone so we never deadlock; flag it loudly.
         scored = sorted(
-            (_score_engine(task_text, e, config, load={"weekly_pct": None, "running_now": 0}) for e in candidates),
+            (
+                _score_engine(
+                    task_text,
+                    e,
+                    config,
+                    role=resolved_role,
+                    load={"weekly_pct": None, "running_now": 0},
+                )
+                for e in candidates
+            ),
             key=lambda s: s["final_score"],
             reverse=True,
         )
@@ -304,7 +322,7 @@ def route(
 
     # --- 3) score available engines by capability minus load -----------------
     scored = sorted(
-        (_score_engine(task_text, e, config) for e in available),
+        (_score_engine(task_text, e, config, role=resolved_role) for e in available),
         key=lambda s: (s["final_score"], s["capability_score"]),
         reverse=True,
     )
@@ -325,9 +343,8 @@ def _finalize(
     chosen_via, scores, excluded, failover_reasons, config,
 ) -> dict:
     name, specialization = ptme.specialist_for_role(role)
-    # Engine-scope guarantee: assert the model belongs to the chosen family.
-    info = ptme.CAPABILITY_TABLE.get(model)
-    if info and info["family"] != engine:  # pragma: no cover - defensive
+    advisory_engine = routing_table.advisory_engine_for_role(role)
+    if model and not ptme.engine_allows_model(engine, model):  # pragma: no cover - defensive
         model, effort = ptme.recommend_for_complexity(complexity, family=engine)
 
     # Guarded learning-rule consultation.
@@ -353,6 +370,7 @@ def _finalize(
         "complexity": complexity,
         "model": model,
         "effort": effort,
+        "advisory_engine": advisory_engine,
         "chosen_via": chosen_via,
         "scores": scores,
         "excluded": excluded,
