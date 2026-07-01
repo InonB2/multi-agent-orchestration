@@ -502,7 +502,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_qa.add_argument("--sub-task-id", required=True)
     p_qa.add_argument("--internal-verdict", help="pass/fail from the internal same-engine tester")
     p_qa.add_argument("--external-verdict", help="pass/fail from the external different-engine QA+security")
-    p_qa.add_argument("--external-engine", choices=VALID_ENGINES, help="Preferred external engine (must differ from --engine)")
+    p_qa.add_argument(
+        "--external-engine",
+        choices=VALID_ENGINES,
+        help="Preferred external engine (must differ from --engine)",
+    )
     p_qa.add_argument("--dry-run", action="store_true")
     p_qa.set_defaults(func=cmd_qa)
 

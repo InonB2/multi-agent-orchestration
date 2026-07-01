@@ -303,7 +303,11 @@ def _insert_lesson_block(text: str, dated_bullet: str, today: str) -> str:
         # Append the bullet after today's subheading (after any existing
         # bullets that already belong to today, before the next subheading).
         insert_pos = sub_idx + 1
-        while insert_pos < len(section) and not section[insert_pos].startswith("### ") and not section[insert_pos].startswith("## "):
+        while (
+            insert_pos < len(section)
+            and not section[insert_pos].startswith("### ")
+            and not section[insert_pos].startswith("## ")
+        ):
             insert_pos += 1
         new_section = section[:insert_pos] + [bullet_line] + section[insert_pos:]
 
@@ -426,9 +430,10 @@ def reflect(outcomes: list[dict] | None = None) -> list[dict]:
                 key,
                 {
                     "key": key,
-                    "rule": "complexity {} tasks with signal '{}' run under planned tokens — keep classifying as {}".format(
-                        complexity, sig, complexity
-                    ),
+                    "rule": (
+                        "complexity {} tasks with signal '{}' run under planned tokens "
+                        "— keep classifying as {}"
+                    ).format(complexity, sig, complexity),
                     "condition": {"complexity": complexity, "signal": sig},
                     "adjustment": {"keep_complexity": complexity},
                     "rationale": "observed under-budget completion; cheap class confirmed",
@@ -702,14 +707,22 @@ HISTORICAL_LESSONS: tuple[dict, ...] = (
     {
         "engine": "agy",
         "role": "qa",
-        "lesson": "agy is unreliable at execution-heavy QA (security audit timed out, exit 124). Route execution-heavy QA/verification to Claude; keep agy on research/design/docs/images.",
+        "lesson": (
+            "agy is unreliable at execution-heavy QA (security audit timed out, "
+            "exit 124). Route execution-heavy QA/verification to Claude; keep "
+            "agy on research/design/docs/images."
+        ),
         "source": "session_logs/session_2026-06-23_overhaul.md",
         "severity": "high",
     },
     {
         "engine": "agy",
         "role": "security",
-        "lesson": "agy security audit timed out (exit 124) on execution-heavy work — moved the gate to a Claude security instance. Prefer Claude for run-the-checks security gates.",
+        "lesson": (
+            "agy security audit timed out (exit 124) on execution-heavy work — "
+            "moved the gate to a Claude security instance. Prefer Claude for "
+            "run-the-checks security gates."
+        ),
         "source": "session_logs/session_2026-06-23_overhaul.md",
         "severity": "high",
     },
@@ -721,7 +734,11 @@ HISTORICAL_LESSONS: tuple[dict, ...] = (
         # with no false causal claim about build_analytics.
         "engine": "agy",
         "role": "coder",
-        "lesson": "Policy: do not route precise code edits (renames/key-drops/surgical refactors) to agy; agy is reserved for research/design/docs/images. Use Claude/codex for precise edits.",
+        "lesson": (
+            "Policy: do not route precise code edits (renames/key-drops/surgical "
+            "refactors) to agy; agy is reserved for research/design/docs/images. "
+            "Use Claude/codex for precise edits."
+        ),
         "source": "session_logs/session_2026-06-23_overhaul.md",
         "severity": "med",
     },
@@ -730,49 +747,84 @@ HISTORICAL_LESSONS: tuple[dict, ...] = (
         # filed under agy/coder until 2026-06-24 QA). Real cause per overhaul log.
         "engine": "claude",
         "role": "coder",
-        "lesson": "A Claude subagent hit its session limit mid-edit and left build_analytics.py with renamed/dropped lesson keys → 2 test failures. Make multi-key edits resilient to cutoff: save atomically / keep back-compat aliases / verify the suite after any structural rename before declaring done.",
+        "lesson": (
+            "A Claude subagent hit its session limit mid-edit and left "
+            "build_analytics.py with renamed/dropped lesson keys → 2 test "
+            "failures. Make multi-key edits resilient to cutoff: save atomically "
+            "/ keep back-compat aliases / verify the suite after any structural "
+            "rename before declaring done."
+        ),
         "source": "session_logs/session_2026-06-23_overhaul.md",
         "severity": "med",
     },
     {
         "engine": "claude",
         "role": "coder",
-        "lesson": "Role inference was first-hit-wins with 'coder' evaluated LAST: 'refactor+tests'→qa, 'refactor auth+tests'→security. Score-and-max or give the leading action verb precedence so refactor/implement/build route to coder.",
+        "lesson": (
+            "Role inference was first-hit-wins with 'coder' evaluated LAST: "
+            "'refactor+tests'→qa, 'refactor auth+tests'→security. Score-and-max "
+            "or give the leading action verb precedence so refactor/implement/"
+            "build route to coder."
+        ),
         "source": "owner_inbox/research/SECURITY_QA_GATE_2026-06-23.md",
         "severity": "med",
     },
     {
         "engine": "claude",
         "role": "qa",
-        "lesson": "router role-inference mis-routed a 'refactor+tests' task to qa/QA that should have been coder/Coder — incidental keyword ('tests') stole a build task. QA must flag mis-routes back to the orchestrator.",
+        "lesson": (
+            "router role-inference mis-routed a 'refactor+tests' task to qa/QA "
+            "that should have been coder/Coder — incidental keyword ('tests') "
+            "stole a build task. QA must flag mis-routes back to the orchestrator."
+        ),
         "source": "owner_inbox/research/SECURITY_QA_GATE_2026-06-23.md",
         "severity": "med",
     },
     {
         "engine": "claude",
         "role": "web",
-        "lesson": "build_analytics one-shot snapshot lie: dashboard learning block read the STATIC BKM/AGENT_LESSONS.md, not the live learning loop. Wire build_learning_loop to learning_loop.summary() and add a regression test.",
+        "lesson": (
+            "build_analytics one-shot snapshot lie: dashboard learning block read "
+            "the STATIC BKM/AGENT_LESSONS.md, not the live learning loop. Wire "
+            "build_learning_loop to learning_loop.summary() and add a regression "
+            "test."
+        ),
         "source": "owner_inbox/research/SECURITY_QA_GATE_2026-06-23.md",
         "severity": "med",
     },
     {
         "engine": "claude",
         "role": "data",
-        "lesson": "learning loop can't learn from duration overruns: record_outcome_from_decision hardcodes planned_duration_ms=None so duration_delta_ms is always None. Either derive a planned-duration estimate or drop the dead fields.",
+        "lesson": (
+            "learning loop can't learn from duration overruns: "
+            "record_outcome_from_decision hardcodes planned_duration_ms=None so "
+            "duration_delta_ms is always None. Either derive a planned-duration "
+            "estimate or drop the dead fields."
+        ),
         "source": "owner_inbox/research/SECURITY_QA_GATE_2026-06-23.md",
         "severity": "low",
     },
     {
         "engine": "claude",
         "role": "security",
-        "lesson": "annotate_ptme_decision rewrites the whole log; the in-place fallback (Windows share-read lock) is non-atomic — a crash mid-write could truncate the log. Add a .bak rotation before the fallback; monitor for zero-length ptme_decisions.jsonl.",
+        "lesson": (
+            "annotate_ptme_decision rewrites the whole log; the in-place fallback "
+            "(Windows share-read lock) is non-atomic — a crash mid-write could "
+            "truncate the log. Add a .bak rotation before the fallback; monitor "
+            "for zero-length ptme_decisions.jsonl."
+        ),
         "source": "owner_inbox/research/SECURITY_QA_GATE_2026-06-23.md",
         "severity": "low",
     },
     {
         "engine": "claude",
         "role": "qa",
-        "lesson": "Gate hygiene: ptme.decide() defaults to the real LOG_FILE, so ad-hoc QA calls polluted production logs/ptme_decisions.jsonl (2 stray rows removed). QA must use a temp log path / dry-run, never the production default.",
+        "lesson": (
+            "Gate hygiene: ptme.decide() defaults to the real LOG_FILE, so ad-hoc "
+            "QA calls polluted production logs/ptme_decisions.jsonl (2 stray rows "
+            "removed). QA must use a temp log path / dry-run, never the "
+            "production default."
+        ),
         "source": "owner_inbox/research/SECURITY_QA_GATE_2026-06-23.md",
         "severity": "low",
     },

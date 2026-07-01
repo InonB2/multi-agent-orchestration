@@ -3,7 +3,10 @@
 v2_dispatch_log.py — Append learning-loop dispatch decisions to tasks/v2_dispatch_log.jsonl.
 
 Command:
-    python scripts/v2_dispatch_log.py log --task-id MMOI-201 --summary "Route task" --recommended-model claude-opus-4.8 --recommended-effort high --recommended-by root --decided-model gpt-5 --decided-effort medium --decided-by local-orchestrator --reason "Codex is better for repo surgery"
+    python scripts/v2_dispatch_log.py log --task-id MMOI-201 --summary "Route task" \
+        --recommended-model claude-opus-4.8 --recommended-effort high \
+        --recommended-by root --decided-model gpt-5 --decided-effort medium \
+        --decided-by local-orchestrator --reason "Codex is better for repo surgery"
 """
 
 from __future__ import annotations

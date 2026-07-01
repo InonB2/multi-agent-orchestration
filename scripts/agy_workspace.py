@@ -27,9 +27,10 @@ def validate_worker_id(worker_id: str) -> str:
         or DOT_DASH_ONLY_RE.fullmatch(worker_id)
     ):
         raise ValueError(
-            "Invalid worker_id '{}': use only letters, digits, dot, underscore, hyphen, and include at least one letter or digit".format(
-                worker_id
-            )
+            (
+                "Invalid worker_id '{}': use only letters, digits, dot, underscore, "
+                "hyphen, and include at least one letter or digit"
+            ).format(worker_id)
         )
     return worker_id
 
