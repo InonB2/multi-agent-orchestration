@@ -155,3 +155,12 @@ def test_infer_role_routes_keywords():
     assert router.infer_role("research the market") == "researcher"
     assert router.infer_role("implement the module") == "coder"
     assert router.infer_role("security audit") == "security"
+
+
+def test_role_advisory_breaks_neutral_tie(monkeypatch):
+    _no_rules(monkeypatch)
+    _all_available(monkeypatch)
+    _flat_load(monkeypatch)
+    result = router.route("xyzzy plugh", role="researcher")
+    assert result["engine"] == "agy"
+    assert result["advisory_engine"] == "agy"

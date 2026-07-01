@@ -19,6 +19,29 @@ python scripts/task_router.py
 python scripts/task_router.py --dry-run
 ```
 
+The semantic router consults `scripts/routing_table.py` (a role→engine advisory
+order) only as a tie-break nudge. Engine/model selection is then gated by CLI
+capability: an engine may run a non-native model family **only** when its CLI
+supports it (`claude → claude`, `codex → gpt`, `agy → gemini | claude | gpt-oss`).
+Unknown model slugs **fail closed** to the engine-native default — never silently
+to a wrong model. This lets a single CLI fan parallel work across its separate
+quota pools (e.g. `agy` runs Gemini and Claude/GPT-OSS on independent ceilings).
+
+## Honest Per-Engine Usage
+
+`scripts/usage_bridge/usage_bridge_reader.py` reports **real** numbers per engine
+(codex quota windows, claude token totals, exported `agy /usage` groups when
+available) and never emits a bare "unknown" — always the best real reading plus an
+explicit `source`/`confidence` label. The dashboard renders these in an Engine
+Usage panel (`dashboard/engine_usage.json`). When a CLI exposes no quota percent,
+show the real token count and say so honestly rather than fabricating a percent.
+
+## Worker ≠ Tester
+
+The agent that builds a task **never** signs it off. Every task passes through a
+`tested` state recorded by a *different* agent (the QA/security role) before it can
+reach `done`. Bake QA, verification, and a security pass into every delegation.
+
 ## Rate Limit Policy
 
 Never refuse tasks. If a model hits rate limit mid-task:

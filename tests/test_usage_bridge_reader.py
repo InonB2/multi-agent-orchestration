@@ -135,6 +135,26 @@ def test_agy_is_honest_null_with_howto():
     assert "/usage" in detail["note"] or "AI Studio" in detail["note"]
 
 
+def test_agy_reads_usage_groups_when_available(tmp_path):
+    usage = tmp_path / "agy_usage.json"
+    usage.write_text(
+        json.dumps(
+            {
+                "groups": [
+                    {"name": "daily", "used_percent": 61.5},
+                    {"name": "weekly", "used_percent": 27.0},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    detail = ubr.read_agy_usage(usage)
+    assert detail["confidence"] == "real"
+    assert detail["window_pct_primary"] == 61.5
+    assert detail["window_pct_weekly"] == 27.0
+    assert "usage groups" in detail["note"].lower()
+
+
 # --------------------------------------------------------------------------- #
 # Resilience: a read failure degrades to honest null, never crashes
 # --------------------------------------------------------------------------- #

@@ -37,38 +37,45 @@ CAPABILITY_TABLE = {
     # --- Claude family ---
     "claude-haiku-4.5": {
         "family": "claude",
+        "model_family": "claude",
         "strengths": ["cheap fast edits", "small docs", "label/copy fixes"],
         "cost_tier": "low",
     },
     "claude-sonnet-4.6": {
         "family": "claude",
+        "model_family": "claude",
         "strengths": ["balanced reasoning", "coordination", "documentation"],
         "cost_tier": "medium",
     },
     "claude-opus-4.8": {
         "family": "claude",
+        "model_family": "claude",
         "strengths": ["architecture", "security review", "hard design judgment"],
         "cost_tier": "high",
     },
     # --- Codex / GPT family ---
     "gpt-5.3-codex": {
         "family": "codex",
+        "model_family": "gpt",
         "strengths": ["single-file coding", "fast terminal work", "contained refactors"],
         "cost_tier": "medium",
     },
     "gpt-5.5": {
         "family": "codex",
+        "model_family": "gpt",
         "strengths": ["heavier repo surgery", "multi-file coding", "complex bugfixes"],
         "cost_tier": "high",
     },
     # --- agy / Gemini family ---
     "gemini-3.5-flash": {
         "family": "agy",
+        "model_family": "gemini",
         "strengths": ["cheap drafting", "fast research bursts", "broad parallel work"],
         "cost_tier": "low",
     },
     "gemini-3.1-pro": {
         "family": "agy",
+        "model_family": "gemini",
         "strengths": ["deep research", "long context synthesis", "parallel planning"],
         "cost_tier": "high",
     },
@@ -108,6 +115,37 @@ RECOMMENDATION_LADDERS = dict(ENGINE_LADDERS)
 RECOMMENDATION_LADDERS["default"] = dict(ENGINE_LADDERS["claude"])
 
 VALID_ENGINES = ("claude", "codex", "agy")
+CLI_CAPABILITY = {
+    "claude": ("claude",),
+    "codex": ("gpt",),
+    "agy": ("gemini", "claude", "gpt-oss"),
+}
+MODEL_FAMILY_PREFIXES = (
+    ("gpt-oss", "gpt-oss"),
+    ("claude-", "claude"),
+    ("gemini-", "gemini"),
+    ("gpt-", "gpt"),
+)
+
+
+def model_family(model: str | None) -> str | None:
+    """Return the CLI capability family for a model slug, else None."""
+    normalized = str(model or "").strip().lower()
+    if not normalized:
+        return None
+    info = CAPABILITY_TABLE.get(normalized)
+    if info and info.get("model_family"):
+        return info["model_family"]
+    for prefix, family in MODEL_FAMILY_PREFIXES:
+        if normalized.startswith(prefix):
+            return family
+    return None
+
+
+def engine_allows_model(engine: str | None, model: str | None) -> bool:
+    family = model_family(model)
+    allowed = CLI_CAPABILITY.get(str(engine or "").strip().lower(), ())
+    return family in allowed if family else False
 
 
 def _assert_ladders_engine_scoped() -> None:
@@ -471,26 +509,32 @@ def decide(
     recommended_model = recommended_model or default_model
     recommended_effort = recommended_effort or default_effort
 
-    # Guard: a caller-supplied recommendation from a FOREIGN family is rejected
-    # back to the engine-scoped default, with the leak noted in the reason.
+    # Guard: a caller-supplied recommendation is accepted only when the target
+    # engine's CLI capability allows that model family. Unknown models fail
+    # closed back to the engine-native default.
     engine_leak = None
     if ladder_engine is not None:
-        rec_info = CAPABILITY_TABLE.get(recommended_model)
-        if rec_info and rec_info["family"] != ladder_engine:
-            engine_leak = (recommended_model, rec_info["family"])
+        rec_family = model_family(recommended_model)
+        if rec_family is None:
+            engine_leak = ("unknown", recommended_model, None)
+            recommended_model, recommended_effort = default_model, default_effort
+        elif not engine_allows_model(ladder_engine, recommended_model):
+            engine_leak = ("foreign", recommended_model, rec_family)
             recommended_model, recommended_effort = default_model, default_effort
 
     decided_model = override_model or recommended_model
     decided_effort = override_effort or recommended_effort
 
-    # Override too must respect engine scope: a foreign-family override is
-    # rejected (it would mean dispatching engine X to engine Y's model).
+    # Override too must respect CLI capability for the chosen engine.
     override_leak = None
     if override_model and ladder_engine is not None:
-        ov_info = CAPABILITY_TABLE.get(override_model)
-        if ov_info and ov_info["family"] != ladder_engine:
-            override_leak = (override_model, ov_info["family"])
-            decided_model = recommended_model  # ignore the foreign override
+        ov_family = model_family(override_model)
+        if ov_family is None:
+            override_leak = ("unknown", override_model, None)
+            decided_model = recommended_model
+        elif not engine_allows_model(ladder_engine, override_model):
+            override_leak = ("foreign", override_model, ov_family)
+            decided_model = recommended_model  # ignore the unsupported override
 
     name, specialization = specialist_for_role(role)
     tester_name, _tester_spec = specialist_for_role(tester_role)
@@ -512,10 +556,17 @@ def decide(
     if resolved_engine:
         rationale_parts.append("engine {}".format(resolved_engine))
     if engine_leak:
-        rationale_parts.append(
-            "rejected foreign recommendation {} (family {}) — using engine "
-            "default {}".format(engine_leak[0], engine_leak[1], default_model)
-        )
+        if engine_leak[0] == "unknown":
+            rationale_parts.append(
+                "rejected unknown model {} — using engine default {}".format(
+                    engine_leak[1], default_model
+                )
+            )
+        else:
+            rationale_parts.append(
+                "rejected foreign recommendation {} (family {}) — using engine "
+                "default {}".format(engine_leak[1], engine_leak[2], default_model)
+            )
         judgment = "overridden"
     # Clean self-recommendation wording: only narrate a caller-vs-default swap
     # when there genuinely was a distinct external recommendation. Recommending
@@ -535,11 +586,18 @@ def decide(
             )
         )
     if override_leak:
-        rationale_parts.append(
-            "rejected foreign override {} (family {}) — kept {}".format(
-                override_leak[0], override_leak[1], decided_model
+        if override_leak[0] == "unknown":
+            rationale_parts.append(
+                "rejected unknown override {} — kept {}".format(
+                    override_leak[1], decided_model
+                )
             )
-        )
+        else:
+            rationale_parts.append(
+                "rejected foreign override {} (family {}) — kept {}".format(
+                    override_leak[1], override_leak[2], decided_model
+                )
+            )
     elif override_model or override_effort:
         rationale_parts.append("override applied to {} / {}".format(decided_model, decided_effort))
         judgment = "overridden"

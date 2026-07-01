@@ -33,10 +33,8 @@ Per engine:
                records attributed to the claude engine
                (confidence="estimated", percent=None, clearly labeled
                "estimated from logged task tokens — not a quota %").
-  AGY    — agy exposes NO local token/usage telemetry (history.jsonl and the
-           conversations/*.db carry no token or usage columns — verified). It
-           shows usage only via the interactive `/usage` command and the AI
-           Studio usage page. We emit honest null + that exact note.
+  AGY    — reads exported `/usage` groups when available; otherwise falls back
+           to an honest howto. No token total is fabricated.
 
 OTel path for fully-real claude/agy %, when you want to wire it later:
   1. Start a local OpenTelemetry collector with a `file` exporter writing to
@@ -69,6 +67,7 @@ _REPO_ROOT = _SCRIPTS_DIR.parent
 CODEX_SESSIONS_ROOT = Path.home() / ".codex" / "sessions"
 DEFAULT_OTEL_OUTPUT_PATH = _REPO_ROOT / "logs" / "otel_telemetry.json"
 PTME_LOG_FILE = _REPO_ROOT / "logs" / "ptme_decisions.jsonl"
+DEFAULT_AGY_USAGE_PATH = _REPO_ROOT / "logs" / "agy_usage.json"
 
 # How a user actually sees agy usage today (no non-interactive surface exists).
 AGY_USAGE_HOWTO = (
@@ -291,16 +290,61 @@ def read_claude_usage(
 
 
 # --------------------------------------------------------------------------- #
-# AGY — honest null
+# AGY — real /usage groups when exported, else honest howto
 # --------------------------------------------------------------------------- #
-def read_agy_usage() -> Dict[str, Any]:
-    """agy exposes no local token/usage telemetry — return honest null + howto."""
+def _coerce_pct(value: Any) -> Optional[float]:
     try:
-        detail = _empty_detail(
-            "~/.gemini/antigravity-cli/ (no token/usage fields)",
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _read_agy_usage_groups(usage_file: Path) -> Dict[str, float]:
+    try:
+        if not usage_file.exists():
+            return {}
+        payload = json.loads(usage_file.read_text(encoding="utf-8", errors="ignore"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    groups = payload.get("groups")
+    if not isinstance(groups, list):
+        return {}
+
+    mapped: Dict[str, float] = {}
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        name = str(group.get("name") or group.get("group") or "").strip().lower()
+        pct = _coerce_pct(group.get("used_percent"))
+        if not name or pct is None:
+            continue
+        mapped[name] = pct
+    return mapped
+
+
+def read_agy_usage(usage_file: Path = DEFAULT_AGY_USAGE_PATH) -> Dict[str, Any]:
+    """Read exported agy `/usage` groups when present, else return honest howto."""
+    try:
+        groups = _read_agy_usage_groups(usage_file)
+        if groups:
+            primary = groups.get("daily")
+            if primary is None:
+                primary = groups.get("primary")
+            weekly = groups.get("weekly")
+            return {
+                "tokens": None,
+                "window_pct_primary": primary,
+                "window_pct_weekly": weekly,
+                "source": str(usage_file),
+                "confidence": "real",
+                "note": "real quota % from exported agy /usage groups",
+            }
+
+        return _empty_detail(
+            "{} (no exported usage groups)".format(usage_file),
             AGY_USAGE_HOWTO,
         )
-        return detail
     except Exception as exc:  # pragma: no cover - defensive
         return _empty_detail("agy (read failed)", f"agy usage read error: {exc}")
 

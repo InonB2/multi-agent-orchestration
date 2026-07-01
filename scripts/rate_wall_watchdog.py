@@ -49,8 +49,7 @@ no comparable wall telemetry locally).
 from __future__ import annotations
 
 import argparse
-import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import codex_usage

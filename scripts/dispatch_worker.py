@@ -120,7 +120,7 @@ def infer_role(worker_id: str | None, engine: str | None = None) -> str | None:
     if not token:
         return None
     if engine and token.startswith(engine + "-"):
-        token = token[len(engine) + 1 :]
+        token = token[len(engine) + 1:]
     token = token.split("-", 1)[0]
     try:
         return normalize_role(token)
@@ -253,7 +253,11 @@ def expire_stale_live_tasks(payload: dict, now: str | None = None) -> int:
         entry["updated_at"] = now
         if entry.get("duration_seconds") is None:
             entry["duration_seconds"] = duration_seconds(entry.get("started_at"), now)
-        reason = "stale: worker no longer running" if not running_now else "stale: exceeded {}h".format(STALE_RUNNING_HOURS)
+        reason = (
+            "stale: worker no longer running"
+            if not running_now
+            else "stale: exceeded {}h".format(STALE_RUNNING_HOURS)
+        )
         entry["reason"] = (entry.get("reason") or "") + (" | " if entry.get("reason") else "") + reason
         expired += 1
     return expired
@@ -313,7 +317,12 @@ def append_usage_log(record: dict, path: Path | None = None) -> None:
         os.fsync(handle.fileno())
 
 
-def resolve_usage(engine: str, usage_tokens: int | None, duration_ms: int | None, window_pct: float | None) -> tuple[int | None, int | None, float | None]:
+def resolve_usage(
+    engine: str,
+    usage_tokens: int | None,
+    duration_ms: int | None,
+    window_pct: float | None,
+) -> tuple[int | None, int | None, float | None]:
     if engine != "codex":
         return usage_tokens, duration_ms, window_pct
     if usage_tokens is not None and duration_ms is not None and window_pct is not None:
@@ -714,7 +723,10 @@ def build_parser() -> argparse.ArgumentParser:
     complete_parser.add_argument("--duration-ms", type=int)
     complete_parser.add_argument("--window-pct", type=float)
     complete_parser.add_argument("--qa-verdict", help="QA/security verdict to stamp (pass/fail)")
-    complete_parser.add_argument("--qa-finding", help="QA/security finding → written as a lesson to the worker's profile")
+    complete_parser.add_argument(
+        "--qa-finding",
+        help="QA/security finding → written as a lesson to the worker's profile",
+    )
     complete_parser.add_argument("--qa-tester", help="The tester id (must differ from --worker)")
     complete_parser.add_argument("--qa-severity", help="Optional finding severity (low/med/high)")
     complete_parser.set_defaults(func=cmd_complete)

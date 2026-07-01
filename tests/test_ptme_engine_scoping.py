@@ -75,6 +75,32 @@ def test_decide_rejects_foreign_override(tmp_path, monkeypatch):
     assert "rejected foreign override" in rec["reason"].lower()
 
 
+def test_decide_allows_agy_to_run_allowed_foreign_family(tmp_path, monkeypatch):
+    monkeypatch.setattr(ptme, "LOG_FILE", tmp_path / "d.jsonl")
+    rec = ptme.decide(
+        task_id="X2B",
+        task_text="Synthesize a long research brief.",
+        engine="agy",
+        recommended_model="claude-opus-4.8",
+    )
+    assert rec["recommended_model"] == "claude-opus-4.8"
+    assert rec["decided_model"] == "claude-opus-4.8"
+    assert "rejected foreign" not in rec["reason"].lower()
+
+
+def test_decide_unknown_model_fails_closed_to_engine_default(tmp_path, monkeypatch):
+    monkeypatch.setattr(ptme, "LOG_FILE", tmp_path / "d.jsonl")
+    rec = ptme.decide(
+        task_id="X2C",
+        task_text="Implement a contained refactor in one file.",
+        engine="codex",
+        recommended_model="mystery-model-1",
+    )
+    assert rec["recommended_model"] == "gpt-5.3-codex"
+    assert rec["decided_model"] == "gpt-5.3-codex"
+    assert "unknown model" in rec["reason"].lower()
+
+
 # --------------------------------------------------------------------------- B
 def test_every_role_maps_to_a_named_specialist():
     for role in ("researcher", "coder", "qa", "security", "designer", "content", "data", "web"):

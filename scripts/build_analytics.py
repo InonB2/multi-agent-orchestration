@@ -222,10 +222,30 @@ def complexity_criteria() -> dict:
     unavailable.
     """
     thresholds = [
-        {"tier": "S", "label": "Small", "rule": "score <= -1", "meaning": "trivial/contained: typo, rename, copy/label fix, single short ask"},
-        {"tier": "M", "label": "Medium", "rule": "-1 < score <= 2", "meaning": "a normal task: one feature, a couple of files, moderate length"},
-        {"tier": "L", "label": "Large", "rule": "2 < score <= 5", "meaning": "broad scope: design/refactor/migration, multiple deliverables or files"},
-        {"tier": "XL", "label": "Extra-Large", "rule": "score > 5", "meaning": "architecture/security/parallel orchestration, high risk + breadth"},
+        {
+            "tier": "S",
+            "label": "Small",
+            "rule": "score <= -1",
+            "meaning": "trivial/contained: typo, rename, copy/label fix, single short ask",
+        },
+        {
+            "tier": "M",
+            "label": "Medium",
+            "rule": "-1 < score <= 2",
+            "meaning": "a normal task: one feature, a couple of files, moderate length",
+        },
+        {
+            "tier": "L",
+            "label": "Large",
+            "rule": "2 < score <= 5",
+            "meaning": "broad scope: design/refactor/migration, multiple deliverables or files",
+        },
+        {
+            "tier": "XL",
+            "label": "Extra-Large",
+            "rule": "score > 5",
+            "meaning": "architecture/security/parallel orchestration, high risk + breadth",
+        },
     ]
     signals: dict = {}
     if ptme is not None:
@@ -715,7 +735,9 @@ def build_live_tasks(rows: list[dict]) -> dict:
     }
 
 
-def build_runtime(tasks: list[dict], activity_lookup: dict[str, dict], decision_rows: list[dict]) -> tuple[dict, dict[str, int], dict[str, set[str]]]:
+def build_runtime(
+    tasks: list[dict], activity_lookup: dict[str, dict], decision_rows: list[dict]
+) -> tuple[dict, dict[str, int], dict[str, set[str]]]:
     decision_task_ids = {str(row.get("task_id")) for row in decision_rows if row.get("task_id")}
     runtime_rows: list[dict] = []
     agent_seconds: dict[str, int] = defaultdict(int)
@@ -824,7 +846,8 @@ def build_per_agent_usage(
         activity_usage = activity_entry.get("usage") if isinstance(activity_entry, dict) else None
         usage = merge_usage(
             activity_usage,
-            usage_by_agent_task.get((agent, str(active_task_id) if active_task_id else None)) or usage_by_agent.get(agent),
+            usage_by_agent_task.get((agent, str(active_task_id) if active_task_id else None))
+            or usage_by_agent.get(agent),
         )
         total_runtime_seconds = agent_seconds.get(agent)
         rows.append(
