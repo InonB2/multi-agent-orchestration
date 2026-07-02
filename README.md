@@ -13,6 +13,7 @@ The current public framework is a **role-based orchestration skeleton** for AI t
 
 - Stable today: task routing, task lifecycle management, pre-task specs, checkpoints, agent config loading, CLI/API provider execution, and isolated worker utilities.
 - In development: **Team-of-Teams (ToT)** supervision and **Per-Task Model & Effort (PTME)** policy. These are present in the repo and covered by tests, but should be treated as evolving runtime patterns rather than a finished multi-team platform.
+- **2026-07-02 — independent audit + remediation:** the reference deployment passed a full cross-model audit (auditor ≠ verifier ≠ fixer); all confirmed issues were fixed same-day. Two of the findings exist in the scripts shipped here (sub-orchestrator keyword routing; learning-loop rules displayed but not yet applied) — the hardened scripts land in the next sync. Details: [Wiki: Audit 2026-07-02 Remediation](https://github.com/InonB2/multi-agent-orchestration/wiki/Audit-2026-07-02-Remediation) and `CHANGELOG.md`.
 
 ## The Problem
 

@@ -4,6 +4,23 @@ All notable changes to this project will be documented here.
 
 ## [Unreleased]
 
+### Audit — 2026-07-02 independent verification + remediation (reference deployment)
+Full cross-model audit of the MMOI reference deployment (auditor model ≠ verifier model ≠ fix QA).
+All 10 audited claims confirmed by live reproduction and fixed same day. Full write-up:
+[Wiki: Audit 2026-07-02 Remediation](https://github.com/InonB2/multi-agent-orchestration/wiki/Audit-2026-07-02-Remediation).
+
+**Known issues in this repo's shipped scripts (fixes queued for the next sync from the reference deployment):**
+- `scripts/sub_orchestrator.py` — `_route_role` uses a local first-hit-wins keyword table and can
+  misroute mixed-keyword tasks (e.g. "refactor the auth module and add tests" → security instead of
+  coder). Upstream fix delegates to the shared scored role inference.
+- `scripts/router.py` — promoted learning-loop rules are surfaced in `applied_rules` but do not yet
+  change the model/effort decision. Upstream fix applies `bump_effort` (max one notch) behind an
+  anti-poisoning guard (sample ≥ 5 or scoped condition, 30-day validation TTL). Treat `applied_rules`
+  as advisory until the sync lands.
+- Also queued from the same remediation: a sidecar file lock for shared dashboard-state writes
+  (atomic JSONL appends, PID-based stale-lock recovery) and QA-verdict / actual-token backfill into
+  the learning-loop outcome log at task completion.
+
 ### Added — Orchestration dashboard + analytics/learning engine (productization)
 - **Self-contained dashboard** (`dashboard/`): live agent/task status, orchestrator stats, live-task
   panel, and per-engine usage/analytics — served from static `*.js`/`*.json` the engine writes. See
