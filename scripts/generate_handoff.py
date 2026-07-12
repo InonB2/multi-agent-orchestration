@@ -196,15 +196,15 @@ def write_json_bundle(handoff_id: str, generated_at: str, in_progress: list, blo
             "required_checks": ["QA sign-off required before status=done"],
         },
         "context_files": [
-            "PROTOCOL.md",
-            "AGENTS.md",
+            "README.md",
             "CLAUDE.md.template",
+            "docs/model_capability_table.md",
+            "docs/tot-ptme.md",
             "scratchpad/handoff_latest.md",
         ],
         "instructions": (
-            "Read PROTOCOL.md first, then scratchpad/handoff_latest.md. "
-            "Claim in_progress tasks by setting preferred_provider to your tool name. "
-            "When done: set status=tested."
+            "Read README.md and CLAUDE.md.template, then scratchpad/handoff_latest.md. "
+            "Use scripts/coordinator.py to claim work. When done: set status=tested."
         ),
     }
 
@@ -226,14 +226,14 @@ def write_json_bundle(handoff_id: str, generated_at: str, in_progress: list, blo
 TASK_COMPLETION_RITUAL = """\
 1. Mark task status → "tested" in tasks/active_tasks.json (never "done" directly)
 2. Add tested_by field (leave blank — QA agent will fill it)
-3. Log session findings to agents/learning_logs/[your-agent-name].md
+3. Record relevant findings in the task notes or handoff
 4. Run `python scripts/generate_handoff.py` before closing session"""
 
 SOP_QUICK_REFERENCE = """\
-- Tool selection: read BKM/cli_first_policy.md
-- DB changes: read BKM/sop_db_migrations.md
-- Agent boundaries: read BKM/sop_agent_domain_boundaries.md
-- Full index: BKM/INDEX.md"""
+- Product overview and commands: README.md
+- Agent operating template: CLAUDE.md.template
+- Model guidance: docs/model_capability_table.md
+- Routing method: docs/tot-ptme.md"""
 
 
 def main():
@@ -294,10 +294,10 @@ def main():
 ```
 
 ## What To Do Next
-1. Read GEMINI.md or AGENTS.md in the project root for project rules and context
+1. Read README.md and CLAUDE.md.template for project rules and context
 2. Continue the In Progress tasks listed above
 3. When a task is done, update tasks/active_tasks.json (status → "tested", add tested_by field)
-4. Log your session findings to agents/learning_logs/[your-name].md
+4. Record relevant findings in the task notes or the next handoff
 
 ---
 
