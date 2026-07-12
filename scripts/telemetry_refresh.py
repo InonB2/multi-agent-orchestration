@@ -9,6 +9,8 @@
 
 Run at session start (and any time): python scripts/telemetry_refresh.py
 """
+from __future__ import annotations
+
 import datetime
 import json
 import os

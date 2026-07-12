@@ -20,6 +20,8 @@ Usage:
   python scripts/agent_telemetry.py stop --agent codex-qa --status done
   python scripts/agent_telemetry.py list
 """
+from __future__ import annotations
+
 import argparse
 import sys
 from datetime import datetime, timezone

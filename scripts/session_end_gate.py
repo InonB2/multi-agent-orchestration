@@ -25,7 +25,7 @@ if hasattr(sys.stderr, 'reconfigure'):
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TASKS_FILE = REPO_ROOT / "tasks" / "active_tasks.json"
 SESSION_ENV = REPO_ROOT / ".claude" / "session.env"
-RESUME_SCRIPT = REPO_ROOT / "scripts" / "resume_candidate.py"
+CHECKPOINT_SCRIPT = REPO_ROOT / "scripts" / "checkpoint.py"
 
 DIVIDER = "─" * 44
 
@@ -61,12 +61,20 @@ def load_tasks() -> List[Dict[str, Any]]:
 
 
 def snapshot_task(task_id: str) -> None:
-    """Call resume_candidate.py snapshot for a given task_id (best-effort)."""
-    if not RESUME_SCRIPT.exists():
+    """Save an upstream checkpoint for a task (best-effort)."""
+    if not CHECKPOINT_SCRIPT.exists():
         return
     try:
         subprocess.run(
-            [sys.executable, str(RESUME_SCRIPT), "snapshot", "--task-id", task_id],
+            [
+                sys.executable,
+                str(CHECKPOINT_SCRIPT),
+                "save",
+                "--task",
+                task_id,
+                "--interrupted-by",
+                "session-end-gate",
+            ],
             timeout=5,
             capture_output=True,
         )
