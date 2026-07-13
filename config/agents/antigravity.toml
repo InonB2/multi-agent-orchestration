@@ -11,6 +11,7 @@ handoff_to      = "coder"
 
 [provider]
 type = "cli"
+adapter = "agy"
 # The Antigravity binary on PATH is `agy`, which differs from the logical model
 # label "antigravity". cli_cmd overrides the preferred_model fallback so the
 # runner spawns the correct executable. The runner also injects TERM=xterm into

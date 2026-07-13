@@ -15,6 +15,7 @@
     "agy": "agy"
   },
   "timeouts": {
+    "claude_dispatch_seconds": 600,
     "codex_dispatch_seconds": 600,
     "agy_dispatch_seconds": 900,
     "agy_invoke_seconds": 300,
@@ -22,6 +23,16 @@
     "health_probe_seconds": 90,
     "agy_poll_seconds": 4,
     "api_request_seconds": 60
+  },
+  "dispatch": {
+    "telemetry_path": "logs/dispatch_telemetry.jsonl",
+    "dashboard_telemetry": true,
+    "adapters": {
+      "claude": {"module": "adapters.claude", "cli_key": "claude", "enabled": true},
+      "codex": {"module": "adapters.codex", "cli_key": "codex", "enabled": true},
+      "agy": {"module": "adapters.agy", "cli_key": "agy", "enabled": true},
+      "stub": {"module": "adapters.stub", "cli_key": "python", "enabled": false}
+    }
   },
   "engine_limits": {
     "claude": 1,

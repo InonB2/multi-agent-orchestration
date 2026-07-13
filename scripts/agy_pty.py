@@ -1,146 +1,167 @@
 #!/usr/bin/env python3
-"""agy_pty.py - run agy headlessly by giving it a real ConPTY (pseudo-terminal).
+"""Run AGY headlessly behind a real PTY on Windows, macOS, or Linux.
 
-agy --print silently drops stdout under a non-TTY (known bug: antigravity-cli #76,
-gemini-cli #27466). Claude Code's tools have no TTY, so agy no-ops. This wrapper
-allocates a ConPTY via pywinpty, runs `agy --print <prompt>` inside it, and captures
-the output the terminal sees. Prompt is read from --prompt or stdin/file.
-
-Usage:
-    python scripts/agy_pty.py --prompt "Reply with exactly: AGY_OK"
-    python scripts/agy_pty.py --prompt-file spec.md --workdir . --timeout 600
+The public AGY CLI currently accepts its print-mode prompt only as an argument.
+This wrapper keeps the AOA-facing contract on stdin/prompt-file, but the final
+AGY child argv necessarily contains the prompt until AGY gains stdin support.
 """
+
+from __future__ import annotations
+
 import argparse
 import os
-import shutil
+import queue
+import re
+import signal
 import sys
+import threading
 import time
 
-from config_loader import load_aoa_config
-
-AOA_CONFIG = load_aoa_config()
-AGY = AOA_CONFIG["cli"]["agy"]
-DEFAULT_WORKDIR = AOA_CONFIG["paths"]["workdir"]
-DEFAULT_TIMEOUT = AOA_CONFIG["timeouts"]["agy_dispatch_seconds"]
 ERROR_PREFIX = "AGY_PTY_ERROR:"
 
 
-def _error(reason):
-    """Emit the stable failure contract consumed by dispatch_agy.ps1."""
-    sys.stderr.write(f"{ERROR_PREFIX} {reason}\n")
-    sys.stderr.flush()
+def _error(reason: str) -> None:
+    print(f"{ERROR_PREFIX} {reason}", file=sys.stderr, flush=True)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--prompt")
-    ap.add_argument("--prompt-file")
-    ap.add_argument("--workdir", default=DEFAULT_WORKDIR)
-    ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
-    ap.add_argument("--agy", default=AGY)
-    ap.add_argument("--model", default=None,
-                    help="Force a specific agy model slug (e.g. a Claude/GPT-OSS model, "
-                         "not just the Gemini default). Passed through as `--model <slug>`.")
-    a = ap.parse_args()
+def _argv(a, prompt: str) -> list[str]:
+    argv = [a.agy, "--dangerously-skip-permissions"]
+    if a.model:
+        argv += ["--model", a.model]
+    return argv + ["--print", prompt, "--print-timeout", f"{a.timeout}s"]
 
-    if not (os.path.isfile(a.agy) or shutil.which(a.agy)):
-        _error(f"agy_executable_not_found:{a.agy}")
-        return 2
-    if a.timeout <= 0:
-        _error("timeout_must_be_positive")
-        return 2
 
-    if a.prompt_file:
-        with open(a.prompt_file, encoding="utf-8") as f:
-            prompt = f.read()
-    elif a.prompt:
-        prompt = a.prompt
-    else:
-        prompt = sys.stdin.read()
-
+def _run_windows(argv: list[str], workdir: str, timeout: int) -> tuple[int, str]:
     try:
         from winpty import PtyProcess
     except ImportError:
         _error("pywinpty_missing")
-        return 2
+        return 2, ""
+    old_cwd = os.getcwd()
+    os.chdir(workdir)
+    try:
+        proc = PtyProcess.spawn(argv, dimensions=(40, 160))
+    finally:
+        os.chdir(old_cwd)
+    chunks: list[str] = []
+    reads: queue.Queue = queue.Queue()
 
-    os.environ["TERM"] = "xterm"
-    os.chdir(a.workdir)
-
-    # spawn agy inside a real pseudo-terminal
-    argv = [a.agy, "--dangerously-skip-permissions"]
-    if a.model:
-        # AGY's CLI can run non-Gemini families (Claude, GPT-OSS) when its plan exposes
-        # them; the family gate lives in scripts/ptme.py (ENGINE_CAN_RUN["agy"]).
-        argv += ["--model", a.model]
-    argv += ["--print", prompt, "--print-timeout", f"{a.timeout}s"]
-    proc = PtyProcess.spawn(argv, dimensions=(40, 160))
-
-    chunks = []
-    deadline = time.time() + a.timeout
-    grace_deadline = deadline + 45
-    timed_out = False
-    while True:
-        now = time.time()
-        if now > grace_deadline:
+    def reader() -> None:
+        while True:
             try:
-                proc.terminate(force=True)
-            except Exception:
-                pass
-            _error("timeout")
-            timed_out = True
-            break
+                reads.put(("data", proc.read()))
+            except EOFError:
+                reads.put(("eof", ""))
+                return
+            except Exception as exc:  # pragma: no cover - backend-specific
+                reads.put(("error", str(exc)))
+                return
+
+    threading.Thread(target=reader, daemon=True).start()
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         try:
-            data = proc.read()  # str; EOFError at end
-        except EOFError:
-            break
-        if data:
-            chunks.append(data)
-        else:
+            kind, value = reads.get(timeout=min(0.2, max(0.01, deadline - time.monotonic())))
+        except queue.Empty:
             if not proc.isalive():
                 break
-            time.sleep(0.05)
+            continue
+        if kind == "data":
+            chunks.append(value)
+        elif kind == "eof":
+            break
+        else:
+            _error(f"pty_read:{value}")
+            return 1, "".join(chunks)
+    else:
+        try:
+            proc.terminate(force=True)
+        except Exception:
+            pass
+        _error("timeout")
+        return 124, "".join(chunks)
+    status = proc.exitstatus
+    return (int(status) if status not in (None, 0) else 0), "".join(chunks)
 
-    out = "".join(chunks)
-    out = _strip_terminal(out)
-    # Force UTF-8 stdout: agy output routinely contains non-cp1252 chars (arrows →,
-    # emoji, Hebrew) that crash the default Windows codec. Reconfigure, else replace.
+
+def _run_posix(argv: list[str], workdir: str, timeout: int) -> tuple[int, str]:
+    import pty
+    import select
+    import subprocess
+
+    master, slave = pty.openpty()
+    proc = subprocess.Popen(argv, cwd=workdir, stdin=slave, stdout=slave, stderr=slave,
+                            start_new_session=True, close_fds=True)
+    os.close(slave)
+    chunks: list[bytes] = []
+    deadline = time.monotonic() + timeout
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stdout.write(out)
-    except Exception:
-        sys.stdout.buffer.write(out.encode("utf-8", errors="replace"))
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([master], [], [], 0.2)
+            if ready:
+                try:
+                    data = os.read(master, 65536)
+                except OSError:
+                    break
+                if not data:
+                    break
+                chunks.append(data)
+            if proc.poll() is not None and not ready:
+                break
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait(timeout=5)
+            _error("timeout")
+            return 124, b"".join(chunks).decode("utf-8", "replace")
+    finally:
+        os.close(master)
+    return proc.wait(timeout=5), b"".join(chunks).decode("utf-8", "replace")
+
+
+def _strip_terminal(value: str) -> str:
+    value = re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)", "", value)
+    value = re.sub(r"\x1b[\[\]][0-9;?]*[ -/]*[@-~]", "", value)
+    value = re.sub(r"\x1b[@-Z\\-_]", "", value)
+    return value.replace("\x07", "")
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--prompt")
+    ap.add_argument("--prompt-file")
+    ap.add_argument("--workdir", default=".")
+    ap.add_argument("--timeout", type=int, default=600)
+    ap.add_argument("--agy", default="agy")
+    ap.add_argument("--model")
+    a = ap.parse_args(argv)
+    if a.prompt_file:
+        with open(a.prompt_file, encoding="utf-8-sig") as handle:
+            prompt = handle.read()
+    elif a.prompt is not None:
+        prompt = a.prompt
+    else:
+        prompt = sys.stdin.read()
+    if not prompt.strip():
+        _error("empty_prompt")
+        return 1
+    try:
+        code, output = (_run_windows(_argv(a, prompt), a.workdir, a.timeout)
+                        if os.name == "nt" else
+                        _run_posix(_argv(a, prompt), a.workdir, a.timeout))
+    except FileNotFoundError:
+        _error("agy_missing")
+        return 2
+    clean = _strip_terminal(output)
+    sys.stdout.write(clean)
     sys.stdout.flush()
-    if timed_out:
-        return 124
-
-    # pywinpty exposes the child status after EOF. Propagate it so callers never
-    # mistake an agy CLI failure (even one with non-empty error prose) for success.
-    child_exit = proc.exitstatus
-    if child_exit not in (None, 0):
-        _error(f"agy_exit_{child_exit}")
-        return int(child_exit)
-    return 0
-
-
-def _strip_terminal(s):
-    import re
-    s = re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)", "", s)   # OSC sequences
-    s = re.sub(r"\x1b[\[\]][0-9;?]*[ -/]*[@-~]", "", s)        # CSI sequences
-    s = re.sub(r"\x1b[@-Z\\-_]", "", s)                          # other escapes
-    s = s.replace("\x07", "")
-    return s
+    if code not in (0, 124):
+        _error(f"agy_exit_{code}")
+    return code
 
 
 if __name__ == "__main__":
     try:
-        code = main()
-    except SystemExit as exc:
-        # argparse uses SystemExit(2) for invalid CLI input.
-        code = int(exc.code or 0)
-        if code:
-            _error(f"argument_error_exit_{code}")
+        raise SystemExit(main())
     except Exception as exc:
         _error(f"exception:{type(exc).__name__}:{exc}")
-        code = 1
-    sys.exit(code)
+        raise SystemExit(1)

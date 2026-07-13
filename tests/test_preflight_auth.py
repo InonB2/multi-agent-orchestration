@@ -2,7 +2,6 @@
 tests/test_preflight_auth.py — sequential live CLI preflight probes.
 """
 
-import subprocess
 import sys
 from pathlib import Path
 
@@ -21,6 +20,7 @@ preferred_model = "claude-code"
 
 [provider]
 type = "cli"
+adapter = "claude"
 """
 
 CODEX_TOML = """\
@@ -29,6 +29,7 @@ preferred_model = "codex"
 
 [provider]
 type          = "cli"
+adapter       = "codex"
 cli_exec_args = ["exec"]
 """
 
@@ -38,6 +39,7 @@ preferred_model = "antigravity"
 
 [provider]
 type    = "cli"
+adapter = "agy"
 cli_cmd = "agy"
 
 [provider.complexity_mapping.S]
@@ -60,28 +62,26 @@ def cfg_dir(tmp_path, monkeypatch):
 
 def test_probe_spawns_real_cli_not_llm_provider_dry_run(cfg_dir, monkeypatch):
     invocations = []
-    kwargs_seen = []
-
-    def fake_run(cmd, **kwargs):
-        invocations.append(cmd)
-        kwargs_seen.append(kwargs)
-        return type("R", (), {"stdout": "", "stderr": "", "returncode": 0})()
-
-    monkeypatch.setattr(pa.subprocess, "run", fake_run)
+    def fake_dispatch(request, **kwargs):
+        invocations.append((request, kwargs))
+        return pa.aoa_dispatch.DispatchResult(request.engine, "success", 0, "ok", "ok", "", 0)
+    monkeypatch.setattr(pa.aoa_dispatch, "dispatch_request", fake_dispatch)
 
     assert pa.probe("codex") is True
-    assert invocations == [["codex", "exec", "info"]]
-    assert kwargs_seen[0]["stdin"] == subprocess.DEVNULL
+    assert invocations[0][0].engine == "codex"
+    assert invocations[0][0].prompt == "info"
+    assert invocations[0][1]["emit_telemetry"] is False
 
 
 def test_probe_agy_uses_print_probe(cfg_dir, monkeypatch):
     invocations = []
 
-    def fake_run(cmd, **kwargs):
-        invocations.append(cmd)
-        return type("R", (), {"stdout": "", "stderr": "", "returncode": 0})()
-
-    monkeypatch.setattr(pa.subprocess, "run", fake_run)
+    def fake_dispatch(request, **kwargs):
+        invocations.append(request)
+        return pa.aoa_dispatch.DispatchResult(request.engine, "success", 0, "ok", "ok", "", 0)
+    monkeypatch.setattr(pa.aoa_dispatch, "dispatch_request", fake_dispatch)
 
     assert pa.probe("antigravity") is True
-    assert invocations == [["agy", "--model", "gemini-3.5-flash", "--print", "health"]]
+    assert invocations[0].engine == "agy"
+    assert invocations[0].model == "gemini-3.5-flash"
+    assert invocations[0].prompt == "health"

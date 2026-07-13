@@ -154,7 +154,7 @@ explicit source/confidence label. See [`dashboard/README.md`](dashboard/README.m
 ## Deployment: Local / Self-Host vs. VPS / Always-On
 
 
-The Multi-Agent Orchestration Framework (MMOI) orchestrates tasks across multiple AI CLI agents: **Antigravity** (`antigravity` via Gemini), **Codex** (`codex` via OpenAI), and **Claude Code** (`claude-code` via Anthropic). 
+AOA orchestrates heterogeneous teams through one agent-agnostic dispatch contract. **Claude Code**, **Codex**, and **AGY** are core v1 lanes; another CLI requires one adapter module plus one configuration entry, with no dispatcher changes. See [Agent dispatch](docs/dispatch.md).
 
 Unlike traditional frameworks designed for API-metered integration, MMOI executes tasks in **CLI mode** by default. By driving these official command-line tools, MMOI routes execution through your personal flat-rate consumer subscriptions (such as Claude Pro, Gemini Advanced, or ChatGPT Plus), avoiding expensive per-token metered API costs. 
 
@@ -411,16 +411,16 @@ The default. The framework routes tasks to agents who execute them via CLI tools
 type = "cli"
 ```
 
-**Non-interactive CLIs (`cli_exec_args`).** Some CLIs open an interactive UI unless you pass a subcommand. The framework runs `<cli> <cli_exec_args...> "<prompt>"` and always closes stdin. The most important case is the **OpenAI Codex CLI**: running `codex "<prompt>"` opens an interactive TUI that **hangs in automation** — so `codex.toml` sets `cli_exec_args = ["exec"]` to run it headless:
+**Non-interactive dispatch.** CLI agents route through `scripts/dispatch.py`; prompts enter through stdin, work directories containing spaces are handled by the subprocess API, and each adapter owns vendor-specific flags. Codex uses `codex exec -` with MCP disabled for isolated workers. Never pass a prompt as a positional CLI argument.
 
 ```toml
 # config/agents/codex.toml
 [provider]
 type = "cli"
-cli_exec_args = ["exec"]   # -> runs `codex exec "<prompt>"` non-interactively
+adapter = "codex"
 ```
 
-> Windows note: if Codex's built-in sandbox fails to spawn subprocesses (`windows sandbox: spawn setup refresh`), append `"--dangerously-bypass-approvals-and-sandbox"` to `cli_exec_args` for trusted repos.
+Use `python scripts/dispatch.py --list-adapters` to inspect registered lanes and `--dry-run` for a redacted plan.
 
 ### API mode — OpenAI-compatible
 
