@@ -98,7 +98,14 @@ def _resolve_cli_cmd(config: dict, agent_name: str) -> str:
     binary identically (PTME T-CODE-03).
     """
     provider = config.get("provider", {})
-    configured = AOA_CONFIG.get("cli", {}).get(agent_name)
+    engine_key = {
+        "antigravity": "agy",
+        "agy": "agy",
+        "claude-code": "claude",
+        "claude": "claude",
+        "codex": "codex",
+    }.get(agent_name)
+    configured = AOA_CONFIG.get("cli", {}).get(engine_key) if engine_key else None
     return configured or provider.get("cli_cmd") or config.get("agent", {}).get("preferred_model", agent_name)
 
 

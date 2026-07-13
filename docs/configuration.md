@@ -17,6 +17,8 @@ working directory. `AOA_CONFIG` may point to an alternate JSON file. An explicit
 selected missing file, malformed JSON, unsupported schema, invalid timeout/limit,
 or configured executable not found by a caller fails with a clear error. No secret
 belongs in this file; store credentials in each CLI's auth store or secret manager.
+Bare CLI command names resolve through `PATH`; CLI values containing a relative path
+separator resolve against the install root, including paths containing spaces.
 
 Run `python scripts/config_loader.py aoa-show` to inspect resolved settings, or
 `python scripts/config_loader.py aoa-get paths.workdir` for one value.

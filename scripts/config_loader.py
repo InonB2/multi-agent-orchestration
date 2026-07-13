@@ -73,9 +73,68 @@ AOA_ENV = {
     "engine_limits.agy": "AOA_AGY_MAX_PARALLEL",
 }
 AOA_PATH_KEYS = {key for key in AOA_ENV if key.startswith("paths.")}
+AOA_CLI_KEYS = {key for key in AOA_ENV if key.startswith("cli.")}
 AOA_INT_KEYS = {
     key for key in AOA_ENV
     if key.startswith("timeouts.") or key.startswith("engine_limits.")
+}
+
+DEFAULT_MODEL_CAPABILITIES = {
+    "claude-haiku-4.5": {
+        "family": "claude", "model_family": "claude",
+        "strengths": ["cheap fast edits", "small docs", "label/copy fixes"],
+        "cost_tier": "low",
+    },
+    "claude-sonnet-4.6": {
+        "family": "claude", "model_family": "claude",
+        "strengths": ["balanced reasoning", "coordination", "documentation"],
+        "cost_tier": "medium",
+    },
+    "claude-opus-4.8": {
+        "family": "claude", "model_family": "claude",
+        "strengths": ["architecture", "security review", "hard design judgment"],
+        "cost_tier": "high",
+    },
+    "gpt-5.3-codex": {
+        "family": "codex", "model_family": "gpt",
+        "strengths": ["single-file coding", "fast terminal work", "contained refactors"],
+        "cost_tier": "medium",
+    },
+    "gpt-5.5": {
+        "family": "codex", "model_family": "gpt",
+        "strengths": ["heavier repo surgery", "multi-file coding", "complex bugfixes"],
+        "cost_tier": "high",
+    },
+    "gemini-3.5-flash": {
+        "family": "agy", "model_family": "gemini",
+        "strengths": ["cheap drafting", "fast research bursts", "broad parallel work"],
+        "cost_tier": "low",
+    },
+    "gemini-3.1-pro": {
+        "family": "agy", "model_family": "gemini",
+        "strengths": ["deep research", "long context synthesis", "parallel planning"],
+        "cost_tier": "high",
+    },
+}
+DEFAULT_MODEL_LADDERS = {
+    "claude": {
+        "S": ["claude-haiku-4.5", "low"],
+        "M": ["claude-sonnet-4.6", "medium"],
+        "L": ["claude-sonnet-4.6", "high"],
+        "XL": ["claude-opus-4.8", "high"],
+    },
+    "codex": {
+        "S": ["gpt-5.3-codex", "low"],
+        "M": ["gpt-5.3-codex", "medium"],
+        "L": ["gpt-5.5", "high"],
+        "XL": ["gpt-5.5", "high"],
+    },
+    "agy": {
+        "S": ["gemini-3.5-flash", "low"],
+        "M": ["gemini-3.5-flash", "medium"],
+        "L": ["gemini-3.1-pro", "high"],
+        "XL": ["gemini-3.1-pro", "high"],
+    },
 }
 
 
@@ -106,8 +165,56 @@ def _portable_aoa_defaults() -> dict:
             "api_request_seconds": 60,
         },
         "engine_limits": {"claude": 1, "codex": 3, "agy": 3},
-        "models": {"capabilities": {}, "ladders": {}},
+        "models": {
+            "capabilities": DEFAULT_MODEL_CAPABILITIES,
+            "ladders": DEFAULT_MODEL_LADDERS,
+        },
     }
+
+
+def _validate_aoa_structure(data: dict) -> None:
+    for section in ("paths", "cli", "timeouts", "engine_limits", "models"):
+        if not isinstance(data.get(section), dict):
+            raise ConfigLoadError("[ERROR] {} must be a JSON object".format(section))
+    for key in AOA_CLI_KEYS:
+        value = get_nested(data, key)
+        if not isinstance(value, str) or not value.strip():
+            raise ConfigLoadError("[ERROR] {} must be a non-empty command string".format(key))
+
+    capabilities = get_nested(data, "models.capabilities")
+    ladders = get_nested(data, "models.ladders")
+    if not isinstance(capabilities, dict):
+        raise ConfigLoadError("[ERROR] models.capabilities must be a JSON object")
+    if not isinstance(ladders, dict):
+        raise ConfigLoadError("[ERROR] models.ladders must be a JSON object")
+    for model, info in capabilities.items():
+        if not isinstance(model, str) or not isinstance(info, dict):
+            raise ConfigLoadError("[ERROR] each models.capabilities entry must be an object")
+        if not isinstance(info.get("family"), str) or not isinstance(info.get("model_family"), str):
+            raise ConfigLoadError(
+                "[ERROR] models.capabilities.{} requires string family and model_family".format(model)
+            )
+    for engine, ladder in ladders.items():
+        if not isinstance(engine, str) or not isinstance(ladder, dict):
+            raise ConfigLoadError("[ERROR] each models.ladders entry must be an object")
+        for complexity, choice in ladder.items():
+            if (
+                complexity not in ("S", "M", "L", "XL")
+                or not isinstance(choice, list)
+                or len(choice) != 2
+                or not all(isinstance(item, str) and item for item in choice)
+            ):
+                raise ConfigLoadError(
+                    "[ERROR] models.ladders.{}.{} must be [model, effort]".format(
+                        engine, complexity
+                    )
+                )
+            if choice[0] not in capabilities:
+                raise ConfigLoadError(
+                    "[ERROR] models.ladders.{}.{} references unknown model {}".format(
+                        engine, complexity, choice[0]
+                    )
+                )
 
 
 def load_aoa_config(config_path: Path | None = None, environ: dict | None = None) -> dict:
@@ -142,6 +249,7 @@ def load_aoa_config(config_path: Path | None = None, environ: dict | None = None
                 raise ConfigLoadError("[ERROR] {} must be a positive integer".format(env_name)) from exc
         _set_nested(data, key, raw)
 
+    _validate_aoa_structure(data)
     for key in AOA_INT_KEYS:
         value = get_nested(data, key)
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
@@ -154,6 +262,11 @@ def load_aoa_config(config_path: Path | None = None, environ: dict | None = None
         if not path.is_absolute():
             path = AOA_ROOT / path
         _set_nested(data, key, str(path.resolve()))
+    for key in AOA_CLI_KEYS:
+        value = get_nested(data, key)
+        command_path = Path(value).expanduser()
+        if ("/" in value or "\\" in value) and not command_path.is_absolute():
+            _set_nested(data, key, str((AOA_ROOT / command_path).resolve()))
     return data
 
 
