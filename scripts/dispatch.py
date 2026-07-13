@@ -170,7 +170,15 @@ def dispatch_request(request: DispatchRequest, *, task_id: str = "ad-hoc", role:
                       else shutil.which(request.executable) or "")
     else:
         executable = _resolve_executable(config, request.engine, entry)
+    telemetry_path = telemetry_path or (ROOT / str(config.get("dispatch", {}).get(
+        "telemetry_path", "logs/dispatch_telemetry.jsonl")))
+    dashboard_enabled = bool(config.get("dispatch", {}).get("dashboard_telemetry", False))
+    started = time.monotonic()
     if not dry_run and not executable:
+        if emit_telemetry:
+            _safe_lifecycle(telemetry_path, "start", request, task_id, role, dashboard_enabled)
+            _safe_lifecycle(telemetry_path, "failure", request, task_id, role,
+                            dashboard_enabled, 0.0, EXIT_MISSING)
         return DispatchResult(request.engine, "missing_executable", EXIT_MISSING, "", "",
                               f"Executable for '{request.engine}' not found", 0.0)
     invocation = adapter.build(request, executable, SCRIPTS)
@@ -191,6 +199,8 @@ def dispatch_request(request: DispatchRequest, *, task_id: str = "ad-hoc", role:
         }
         return DispatchResult(request.engine, "dry_run", 0, json.dumps(plan), "", "", 0.0)
 
+    if emit_telemetry:
+        _safe_lifecycle(telemetry_path, "start", request, task_id, role, dashboard_enabled)
     if preflight:
         probe_text, expected = adapter.probe_prompt()
         probe_request = DispatchRequest(request.engine, probe_text, request.workdir,
@@ -198,18 +208,28 @@ def dispatch_request(request: DispatchRequest, *, task_id: str = "ad-hoc", role:
                                         request.model, request.effort, request.enable_mcp,
                                         request.executable)
         probe_invocation = adapter.build(probe_request, executable, SCRIPTS)
-        code, out, err, timed_out = _invoke(probe_invocation, request.workdir, probe_request.timeout)
-        parsed = adapter.parse(out, err)
+        try:
+            code, out, err, timed_out = _invoke(
+                probe_invocation, request.workdir, probe_request.timeout
+            )
+            parsed = adapter.parse(out, err)
+        except KeyboardInterrupt:
+            elapsed = time.monotonic() - started
+            if emit_telemetry:
+                _safe_lifecycle(telemetry_path, "cancelled", request, task_id, role,
+                                dashboard_enabled, elapsed, 130)
+            return DispatchResult(request.engine, "cancelled", 130, "", "",
+                                  "Dispatch cancelled", elapsed)
+        except OSError as exc:
+            code, out, err, timed_out, parsed = 1, "", str(exc), False, ""
         if timed_out or code != 0 or expected not in parsed:
+            elapsed = time.monotonic() - started
+            if emit_telemetry:
+                _safe_lifecycle(telemetry_path, "failure", request, task_id, role,
+                                dashboard_enabled, elapsed, EXIT_MISSING)
             return DispatchResult(request.engine, "preflight_failed", EXIT_MISSING, "", out,
-                                  err or f"Authentication/health probe failed for '{request.engine}'", 0.0)
+                                  err or f"Authentication/health probe failed for '{request.engine}'", elapsed)
 
-    telemetry_path = telemetry_path or (ROOT / str(config.get("dispatch", {}).get(
-        "telemetry_path", "logs/dispatch_telemetry.jsonl")))
-    dashboard_enabled = bool(config.get("dispatch", {}).get("dashboard_telemetry", False))
-    started = time.monotonic()
-    if emit_telemetry:
-        _safe_lifecycle(telemetry_path, "start", request, task_id, role, dashboard_enabled)
     stdout = stderr = message = ""
     status, code = "failure", 1
     try:

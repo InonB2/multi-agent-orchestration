@@ -4,6 +4,7 @@
     "workdir": ".",
     "agy_workers": "workspaces/agy",
     "codex_workers": "workspaces/codex",
+    "claude_workers": "workspaces/claude",
     "agy_queue": "tasks/agy_queue",
     "agy_results": "tasks/agy_results"
   },

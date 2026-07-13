@@ -106,9 +106,13 @@ def test_success_and_failure_telemetry_and_capture(fake_core, monkeypatch, tmp_p
 def test_missing_executable_fails_loud(monkeypatch, tmp_path):
     monkeypatch.setattr(dispatch, "_load_adapter", lambda config, engine: (FakeAdapter(), {"module": "fake"}))
     monkeypatch.setattr(dispatch, "_resolve_executable", lambda config, engine, entry: "")
-    result = dispatch.dispatch_request(req(tmp_path), preflight=False, config={})
+    telemetry = tmp_path / "missing.jsonl"
+    result = dispatch.dispatch_request(req(tmp_path), preflight=False, config={},
+                                       telemetry_path=telemetry)
     assert result.exit_code == 2
     assert result.status == "missing_executable"
+    events = [json.loads(line)["event"] for line in telemetry.read_text().splitlines()]
+    assert events == ["start", "failure"]
 
 
 def test_dry_run_needs_no_installed_cli_and_redacts(fake_core, monkeypatch, tmp_path):
@@ -121,9 +125,14 @@ def test_dry_run_needs_no_installed_cli_and_redacts(fake_core, monkeypatch, tmp_
 
 def test_preflight_auth_failure(fake_core, monkeypatch, tmp_path):
     monkeypatch.setenv("AOA_FAKE_MODE", "nonzero")
-    result = dispatch.dispatch_request(req(tmp_path), preflight=True, config={})
+    telemetry = tmp_path / "auth.jsonl"
+    result = dispatch.dispatch_request(req(tmp_path), preflight=True, config={},
+                                       telemetry_path=telemetry)
     assert result.exit_code == 2
     assert result.status == "preflight_failed"
+    text = telemetry.read_text(encoding="utf-8")
+    assert [json.loads(line)["event"] for line in text.splitlines()] == ["start", "failure"]
+    assert "hello" not in text and "fake failure" not in text
 
 
 @pytest.mark.parametrize("adapter", [CodexAdapter(), ClaudeAdapter(), AgyAdapter()])

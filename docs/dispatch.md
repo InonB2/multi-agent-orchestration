@@ -38,3 +38,9 @@ Telemetry writes prompt-free start/success/failure/timeout lifecycle events to
 `logs/dispatch_telemetry.jsonl` and bridges live state to the existing dashboard
 activity feed. Repository dashboard seeds remain generic; runtime history is not
 part of a release commit.
+
+`scripts/parallel_dispatch.py` uses this same in-process contract for every
+configured adapter, including Claude and third-party adapters. Its public
+diagnostic command shape is prompt-free; concurrency limits come from
+`engine_limits` (or an adapter's `max_parallel`, default 1), and each engine gets
+an isolated workspace under its configured/default worker root.

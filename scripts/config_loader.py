@@ -54,6 +54,7 @@ AOA_ENV = {
     "paths.workdir": "AOA_WORKDIR",
     "paths.agy_workers": "AOA_AGY_WORKERS_DIR",
     "paths.codex_workers": "AOA_CODEX_WORKERS_DIR",
+    "paths.claude_workers": "AOA_CLAUDE_WORKERS_DIR",
     "paths.agy_queue": "AOA_AGY_QUEUE_DIR",
     "paths.agy_results": "AOA_AGY_RESULTS_DIR",
     "cli.python": "AOA_PYTHON_CMD",
@@ -151,7 +152,8 @@ def _portable_aoa_defaults() -> dict:
         "schema_version": 1,
         "paths": {
             "workdir": ".", "agy_workers": "workspaces/agy",
-            "codex_workers": "workspaces/codex", "agy_queue": "tasks/agy_queue",
+            "codex_workers": "workspaces/codex", "claude_workers": "workspaces/claude",
+            "agy_queue": "tasks/agy_queue",
             "agy_results": "tasks/agy_results",
         },
         "cli": {
