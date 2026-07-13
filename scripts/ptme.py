@@ -30,8 +30,11 @@ from config_loader import load_aoa_config
 ROOT = Path(__file__).resolve().parent.parent
 LOG_FILE = ROOT / "logs" / "ptme_decisions.jsonl"
 
-# Model capabilities and per-engine ladders are configured in aoa.config.json.
-_AOA_MODELS = load_aoa_config()["models"]
+# Model capabilities, adapters and per-engine ladders are configured in
+# aoa.config.json. Adding an engine changes config, not this module.
+_AOA_CONFIG = load_aoa_config()
+_AOA_MODELS = _AOA_CONFIG["models"]
+_ADAPTERS = _AOA_CONFIG.get("dispatch", {}).get("adapters", {})
 CAPABILITY_TABLE = _AOA_MODELS["capabilities"]
 ENGINE_LADDERS = {
     engine: {complexity: tuple(choice) for complexity, choice in ladder.items()}
@@ -47,12 +50,34 @@ ENGINE_LADDERS = {
 RECOMMENDATION_LADDERS = dict(ENGINE_LADDERS)
 RECOMMENDATION_LADDERS["default"] = dict(ENGINE_LADDERS["claude"])
 
-VALID_ENGINES = ("claude", "codex", "agy")
-CLI_CAPABILITY = {
-    "claude": ("claude",),
-    "codex": ("gpt",),
-    "agy": ("gemini", "claude", "gpt-oss"),
-}
+VALID_ENGINES = tuple(
+    engine for engine in ENGINE_LADDERS
+    if engine in _ADAPTERS
+)
+
+
+def _configured_cli_capabilities() -> dict[str, tuple[str, ...]]:
+    """Derive each adapter's runnable model families from config.
+
+    The default is the model_family values of capability rows owned by that
+    engine. A multi-family CLI can declare an explicit model_families list on
+    its adapter registration.
+    """
+    result = {}
+    for engine in VALID_ENGINES:
+        explicit = _ADAPTERS[engine].get("model_families")
+        if explicit is not None:
+            result[engine] = tuple(str(item) for item in explicit)
+            continue
+        result[engine] = tuple(sorted({
+            str(info["model_family"])
+            for info in CAPABILITY_TABLE.values()
+            if info.get("family") == engine and info.get("model_family")
+        }))
+    return result
+
+
+CLI_CAPABILITY = _configured_cli_capabilities()
 MODEL_FAMILY_PREFIXES = (
     ("gpt-oss", "gpt-oss"),
     ("claude-", "claude"),
@@ -367,9 +392,9 @@ def describe_complexity(task_text: str) -> str:
 def recommend_for_complexity(complexity: str, family: str | None = None) -> tuple[str, str]:
     """Engine-scoped recommendation. `family` is the engine id.
 
-    Passing a known engine ("claude"/"codex"/"agy") returns a model from THAT
-    engine only. family=None falls back to RECOMMENDATION_LADDERS["default"]
-    (the Claude ladder) for legacy callers, but emits a single-family result.
+    Passing a configured engine returns a model from that engine only.
+    family=None falls back to RECOMMENDATION_LADDERS["default"] (the Claude
+    ladder) for legacy callers, but emits a single-family result.
     """
     ladder_key = family or "default"
     if ladder_key not in RECOMMENDATION_LADDERS:

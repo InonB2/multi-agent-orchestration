@@ -31,8 +31,9 @@
     "adapters": {
       "claude": {"module": "adapters.claude", "cli_key": "claude", "enabled": true},
       "codex": {"module": "adapters.codex", "cli_key": "codex", "enabled": true},
-      "agy": {"module": "adapters.agy", "cli_key": "agy", "enabled": true},
-      "stub": {"module": "adapters.stub", "cli_key": "python", "enabled": false}
+      "agy": {"module": "adapters.agy", "cli_key": "agy", "enabled": true, "model_families": ["gemini", "claude", "gpt-oss"]},
+      "stub": {"module": "adapters.stub", "cli_key": "python", "enabled": false},
+      "example_echo": {"module": "adapters.example_echo", "cli_key": "python", "enabled": false}
     }
   },
   "demo": {
@@ -42,7 +43,8 @@
   "engine_limits": {
     "claude": 1,
     "codex": 3,
-    "agy": 3
+    "agy": 3,
+    "example_echo": 2
   },
   "models": {
     "capabilities": {
@@ -52,12 +54,14 @@
       "gpt-5.3-codex": {"family": "codex", "model_family": "gpt", "strengths": ["single-file coding", "fast terminal work", "contained refactors"], "cost_tier": "medium"},
       "gpt-5.5": {"family": "codex", "model_family": "gpt", "strengths": ["heavier repo surgery", "multi-file coding", "complex bugfixes"], "cost_tier": "high"},
       "gemini-3.5-flash": {"family": "agy", "model_family": "gemini", "strengths": ["cheap drafting", "fast research bursts", "broad parallel work"], "cost_tier": "low"},
-      "gemini-3.1-pro": {"family": "agy", "model_family": "gemini", "strengths": ["deep research", "long context synthesis", "parallel planning"], "cost_tier": "high"}
+      "gemini-3.1-pro": {"family": "agy", "model_family": "gemini", "strengths": ["deep research", "long context synthesis", "parallel planning"], "cost_tier": "high"},
+      "example-echo": {"family": "example_echo", "model_family": "stub", "strengths": ["adapter validation"], "cost_tier": "low"}
     },
     "ladders": {
       "claude": {"S": ["claude-haiku-4.5", "low"], "M": ["claude-sonnet-4.6", "medium"], "L": ["claude-sonnet-4.6", "high"], "XL": ["claude-opus-4.8", "high"]},
       "codex": {"S": ["gpt-5.3-codex", "low"], "M": ["gpt-5.3-codex", "medium"], "L": ["gpt-5.5", "high"], "XL": ["gpt-5.5", "high"]},
-      "agy": {"S": ["gemini-3.5-flash", "low"], "M": ["gemini-3.5-flash", "medium"], "L": ["gemini-3.1-pro", "high"], "XL": ["gemini-3.1-pro", "high"]}
+      "agy": {"S": ["gemini-3.5-flash", "low"], "M": ["gemini-3.5-flash", "medium"], "L": ["gemini-3.1-pro", "high"], "XL": ["gemini-3.1-pro", "high"]},
+      "example_echo": {"S": ["example-echo", "low"], "M": ["example-echo", "low"], "L": ["example-echo", "low"], "XL": ["example-echo", "low"]}
     }
   }
 }

@@ -148,10 +148,42 @@ def test_prior_failed_run_forces_override(tmp_path, monkeypatch):
     ptme.decide(task_id="PF-1", task_text="Implement feature.", engine="claude",
                 role="coder", decided_by="claude_sub_orchestrator")
     # Mark that run failed.
-    rows = [json.loads(l) for l in log.read_text(encoding="utf-8").splitlines() if l.strip()]
+    rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines() if line.strip()]
     rows[-1]["run_status"] = "failed"
     log.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
     record = ptme.decide(task_id="PF-1", task_text="Implement feature.", engine="claude",
                          role="coder", decided_by="claude_sub_orchestrator")
     assert record["judgment"] == "overridden"
     assert "prior failed run" in record["rationale"]
+
+
+def test_configured_custom_engine_is_ptme_scoped(tmp_path, monkeypatch):
+    monkeypatch.setattr(ptme, "LOG_FILE", tmp_path / "ptme.jsonl")
+    assert "example_echo" in ptme.VALID_ENGINES
+    assert ptme.CLI_CAPABILITY["example_echo"] == ("stub",)
+
+    record = ptme.decide(
+        task_id="CUSTOM-1",
+        task_text="Fix a small label.",
+        engine="example_echo",
+    )
+    assert record["engine"] == "example_echo"
+    assert record["decided_model"] == "example-echo"
+
+    foreign = ptme.decide(
+        task_id="CUSTOM-2",
+        task_text="Fix a small label.",
+        engine="example_echo",
+        recommended_model="gpt-5.5",
+    )
+    assert foreign["decided_model"] == "example-echo"
+    assert "rejected foreign recommendation" in foreign["reason"].lower()
+
+
+def test_cli_parser_accepts_configured_custom_engine():
+    parser = ptme.build_parser()
+    args = parser.parse_args([
+        "decide", "--task-id", "CUSTOM-CLI", "--text", "small edit",
+        "--engine", "example_echo",
+    ])
+    assert args.engine == "example_echo"

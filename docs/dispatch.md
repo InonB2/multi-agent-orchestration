@@ -28,6 +28,8 @@ An adapter exports an `Adapter` class with `engine`, `build`, `parse`, and
 stdin to the dispatch subprocess. Register the module and CLI key under
 `dispatch.adapters` in `aoa.config.json`; the dispatcher has no engine switch.
 `adapters/stub.py` is a fourth working registration example.
+See [Add your own agent](ADD_YOUR_OWN_AGENT.md) for the complete cold path,
+reference adapter, validation checklist, and real-engine effort estimate.
 
 AGY's public print-mode CLI currently accepts the final prompt only as a child
 process argument. AOA still accepts it through stdin and keeps it out of dry-run
