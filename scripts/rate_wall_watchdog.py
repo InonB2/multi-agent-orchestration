@@ -28,7 +28,7 @@ when the binding window drops back under 100% and dispatch is safe again.
 WAKE-UP STRATEGY
 ----------------
 We CANNOT revive a dead sub-agent mid-flight. After the reset we re-dispatch
-FRESH and rely on MMOI v2 checkpoint/resume to continue long jobs from their
+FRESH and rely on AOA v2 checkpoint/resume to continue long jobs from their
 last checkpoint instead of restarting from zero. A scheduled re-dispatch
 should target the reset time of the binding window.
 

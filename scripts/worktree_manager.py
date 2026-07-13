@@ -3,8 +3,8 @@
 worktree_manager.py — Git worktree lifecycle manager for the Team-of-Teams (ToT)
 worker pool.
 
-Adapted from the Claude Playground worktree_manager.py (INFRA-008). This repo-local
-version is trimmed to the ToT need: give each parallel worker an *isolated* working
+Adapted from an earlier worktree manager (INFRA-008). This repo-local version is
+trimmed to the ToT need: give each parallel worker an *isolated* working
 directory so concurrent agents never corrupt one another's git index or source tree.
 
 Each worker gets a dedicated branch + worktree created from a base ref (default:
@@ -43,10 +43,10 @@ ROOT          = Path(__file__).resolve().parent.parent
 # Worktrees live OUTSIDE the repo working tree (a sibling dir) so creating them
 # never pollutes the repo's git status / index. Mirrors the plan's separate
 # worktrees root (e.g. D:\...\worktrees on Windows, /opt/orchestration/worktrees
-# on the VPS). Override via the MMOI_WORKTREES_DIR env var if you prefer another
+# on the VPS). Override via the AOA_WORKTREES_DIR env var if you prefer another
 # location. Set as a module global so tests can monkeypatch it.
 WORKTREES_DIR = Path(
-    os.environ.get("MMOI_WORKTREES_DIR", str(ROOT.parent / "mmoi-worktrees"))
+    os.environ.get("AOA_WORKTREES_DIR", str(ROOT.parent / "aoa-worktrees"))
 )
 
 # Same safe allowlist coordinator.py enforces on task IDs — blocks path traversal

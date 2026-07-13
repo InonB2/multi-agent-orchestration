@@ -3,7 +3,7 @@
 > Wiki draft — upload this page to the repository wiki as **Agent-Dashboard**.
 > Source of truth for setup details: [`dashboard/README.md`](../blob/main/dashboard/README.md).
 
-The Agent Dashboard is a single-file, zero-dependency view of a running MMOI
+The Agent Dashboard is a single-file, zero-dependency view of a running AOA
 multi-engine agent team. It answers, at a glance:
 
 - Which of the four orchestrators (Orchestrator / Claude / Antigravity / Codex) is active?
@@ -17,7 +17,7 @@ The dashboard is meant to be opened straight off disk (`file://`). Browsers
 block `fetch()` of local files, so instead of fetching JSON, each feed is a tiny
 JavaScript file that assigns a single global. `index.html` includes them with
 `<script src>` tags and renders from `window.ORCH_STATS`, `window.LIVE_TASKS`,
-`window.AGENT_ACTIVITY`, and `window.MMOI_ANALYTICS`. To refresh: re-run the
+`window.AGENT_ACTIVITY`, and `window.AOA_ANALYTICS`. To refresh: re-run the
 producer script, then reload the page.
 
 | Feed                      | Global                  | Producer                          |
@@ -25,7 +25,7 @@ producer script, then reload the page.
 | `orchestrator_stats.js`   | `window.ORCH_STATS`     | `scripts/orchestrator_stats.py`   |
 | `live_tasks.js`           | `window.LIVE_TASKS`     | `scripts/dispatch_worker.py`      |
 | `agent_activity.js`       | `window.AGENT_ACTIVITY` | `scripts/agent_activity.py`       |
-| `analytics_data.js`       | `window.MMOI_ANALYTICS` | `scripts/build_analytics.py`      |
+| `analytics_data.js`       | `window.AOA_ANALYTICS` | `scripts/build_analytics.py`      |
 
 A `.json` twin is written next to each `.js` for non-browser tooling. Writes are
 atomic and tolerate a file held open by the browser (no half-writes, no frozen

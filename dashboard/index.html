@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>MMOI — Agent Orchestration Dashboard</title>
+<title>AOA — Agent Orchestration Dashboard</title>
 <style>
   :root{
     --bg:#0a0e16;--surface:#0f1420;--surface2:#141b29;--surface3:#1b2333;
@@ -132,7 +132,7 @@
   <section class="section">
     <div class="section-head">
       <div><div class="section-title">Analytics</div><div class="section-sub">Aggregated from <code>analytics_data.js</code> — preview / v0, see README known-limitations</div></div>
-      <div class="section-key">MMOI_ANALYTICS</div>
+      <div class="section-key">AOA_ANALYTICS</div>
     </div>
     <div id="analytics-root"></div>
   </section>
@@ -305,7 +305,7 @@
 
   // ---------- analytics ----------
   function renderAnalytics(){
-    var doc = window.MMOI_ANALYTICS;
+    var doc = window.AOA_ANALYTICS;
     if(!doc || typeof doc!=='object'){
       $('analytics-root').innerHTML = '<div class="idle-note">No analytics yet. Run <code>python scripts/build_analytics.py</code>.</div>';
       return;
@@ -332,13 +332,13 @@
   function metaLine(){
     var o = window.ORCH_STATS && window.ORCH_STATS._meta;
     var a = window.AGENT_ACTIVITY && window.AGENT_ACTIVITY._meta;
-    var an = window.MMOI_ANALYTICS && window.MMOI_ANALYTICS._meta;
+    var an = window.AOA_ANALYTICS && window.AOA_ANALYTICS._meta;
     var parts = [];
     if(o && o.updated_at) parts.push('orchestrator_stats @ '+esc(o.updated_at));
     if(a && a.updated_at) parts.push('agent_activity @ '+esc(a.updated_at));
     if(an && an.generated_at) parts.push('analytics @ '+esc(an.generated_at));
     $('meta-line').innerHTML = parts.length ? 'Feed timestamps · '+parts.join(' · ') : 'Feeds loaded (no timestamps reported).';
-    var loaded = [window.ORCH_STATS,window.LIVE_TASKS,window.AGENT_ACTIVITY,window.MMOI_ANALYTICS].filter(Boolean).length;
+    var loaded = [window.ORCH_STATS,window.LIVE_TASKS,window.AGENT_ACTIVITY,window.AOA_ANALYTICS].filter(Boolean).length;
     $('feed-age').textContent = loaded+'/4 feeds';
   }
   function tickClock(){
@@ -348,9 +348,9 @@
 
   // ---------- expand-state persistence (survives re-render + refresh) ----------
   var OPEN_PANELS = {};
-  try{ OPEN_PANELS = JSON.parse(localStorage.getItem('mmoi_open_panels')||'{}') || {}; }catch(e){ OPEN_PANELS = {}; }
+  try{ OPEN_PANELS = JSON.parse(localStorage.getItem('aoa_open_panels')||'{}') || {}; }catch(e){ OPEN_PANELS = {}; }
   function persistOpenPanels(){
-    try{ localStorage.setItem('mmoi_open_panels', JSON.stringify(OPEN_PANELS)); }catch(e){}
+    try{ localStorage.setItem('aoa_open_panels', JSON.stringify(OPEN_PANELS)); }catch(e){}
   }
   function restoreOpenPanels(){
     var nodes = document.querySelectorAll('details[data-panel]');

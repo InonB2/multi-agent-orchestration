@@ -127,7 +127,7 @@ worker (per task)
 | File | Role |
 | :--- | :--- |
 | `scripts/coordinator.py` | **CAS claim guard** — claiming an already `in_progress`/`tested`/`done` task is rejected (exit 1) under the file lock. Two concurrent claims → exactly one winner. `mark-tested` also rejects self-testing when `tested_by` matches the worker/assignee unless `--force` is used. |
-| `scripts/worktree_manager.py` | Create/destroy isolated git worktrees + temp branches (`worker/<task-id>`) from the current HEAD. Worktrees live in a sibling dir (`../mmoi-worktrees`, override with `MMOI_WORKTREES_DIR`) so the repo's git status stays clean. |
+| `scripts/worktree_manager.py` | Create/destroy isolated git worktrees + temp branches (`worker/<task-id>`) from the current HEAD. Worktrees live in a sibling dir (`../aoa-worktrees`, override with `AOA_WORKTREES_DIR`) so the repo's git status stays clean. |
 | `scripts/worker_wrapper.py` | Deterministic, atomic result writeback to `owner_inbox/TASK-<id>_result.md`. Path-traversal guarded. |
 | `scripts/model_supervisor.py` | Select → spec-gate → claim → checkpoint reload → run pool → aggregate. Concurrency caps: codex 3, antigravity/agy 2, claude-code 1. Rate-limit (`429`/`quota`) triggers a pool cool-down. |
 | `scripts/preflight_auth.py` | Sequential CLI auth warm-up before the parallel pool (avoids concurrent token-cache corruption). |

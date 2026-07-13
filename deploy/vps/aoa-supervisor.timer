@@ -1,0 +1,19 @@
+# aoa-supervisor.timer — triggers the AOA supervisor pass every 5 minutes.
+#
+# Install (as root on the VPS):
+#   cp deploy/vps/aoa-supervisor.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now aoa-supervisor.timer
+#   systemctl list-timers aoa-supervisor.timer
+[Unit]
+Description=Run the AOA Team-of-Teams supervisor every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=aoa-supervisor.service
+
+[Install]
+WantedBy=timers.target

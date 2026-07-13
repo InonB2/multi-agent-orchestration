@@ -234,7 +234,7 @@ def test_analytics_active_is_not_lifetime_total(tmp_path, monkeypatch):
 
     ba.main([])
     src = output_file.read_text(encoding="utf-8").strip()
-    payload = json.loads(src[len("window.MMOI_ANALYTICS = "):-1])
+    payload = json.loads(src[len("window.AOA_ANALYTICS = "):-1])
     sources = payload["sources"]
     assert sources["tasks_total_lifetime"] == 3
     assert sources["active"]["tasks_in_progress"] == 1

@@ -23,7 +23,6 @@ import argparse
 import json
 import os
 import socket
-import subprocess
 import sys
 import urllib.error
 import urllib.request

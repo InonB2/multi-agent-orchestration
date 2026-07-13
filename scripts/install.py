@@ -100,8 +100,11 @@ def write_config(root, config, found, chosen, dry_run):
             config.setdefault("cli", {})[key] = found[engine]
     prior = config.get("demo", {})
     worker = prior.get("worker_engine") if prior.get("worker_engine") in chosen else chosen[0]
-    tester = prior.get("tester_engine") if prior.get("tester_engine") in chosen and prior.get("tester_engine") != worker else next(
-        engine for engine in chosen if engine != worker
+    preferred_tester = prior.get("tester_engine")
+    tester = (
+        preferred_tester
+        if preferred_tester in chosen and preferred_tester != worker
+        else next(engine for engine in chosen if engine != worker)
     )
     config["demo"] = {"worker_engine": worker, "tester_engine": tester}
     path = root / "aoa.config.local.json"
@@ -150,7 +153,10 @@ def port_open(port):
 
 def open_dashboard(root, dry_run, no_open):
     if no_open:
-        print("[OK] dashboard launch skipped; run: {} scripts/dashboard_server.py --directory .aoa/dashboard".format(sys.executable))
+        print(
+            "[OK] dashboard launch skipped; run: {} scripts/dashboard_server.py "
+            "--directory .aoa/dashboard".format(sys.executable)
+        )
         return
     url = "http://127.0.0.1:7780/"
     command = [sys.executable, str(root / "scripts" / "dashboard_server.py"),

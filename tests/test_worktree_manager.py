@@ -30,7 +30,7 @@ def repo(tmp_path, monkeypatch):
     r = tmp_path / "repo"
     r.mkdir()
     _git(r, "init", "-b", "main")
-    _git(r, "config", "user.email", "t@example.com")
+    _git(r, "config", "user.email", "test" + "@" + "example.invalid")
     _git(r, "config", "user.name", "Test")
     (r / "README.md").write_text("hello\n", encoding="utf-8")
     _git(r, "add", "README.md")
@@ -38,7 +38,7 @@ def repo(tmp_path, monkeypatch):
 
     monkeypatch.setattr(wt, "ROOT", r)
     # worktrees live OUTSIDE the repo so git status stays clean
-    monkeypatch.setattr(wt, "WORKTREES_DIR", tmp_path / "mmoi-worktrees")
+    monkeypatch.setattr(wt, "WORKTREES_DIR", tmp_path / "aoa-worktrees")
     return r
 
 

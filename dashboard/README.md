@@ -1,10 +1,10 @@
-# MMOI Agent Orchestration Dashboard
+# AOA Agent Orchestration Dashboard
 
 A zero-dependency, single-file dashboard for watching a multi-engine agent
 team work: which orchestrator is active, which specialist agents are running,
 what tasks are in flight, and what model/effort each task was dispatched with.
 
-It is part of the **Multi-Agent Orchestration Infrastructure (MMOI)** and reads
+It is part of the **Multi-Agent Orchestration Infrastructure (AOA)** and reads
 the live feeds produced by the Python scripts in [`../scripts/`](../scripts).
 
 ```
@@ -39,7 +39,7 @@ tiny JavaScript file that assigns one global:
 | `orchestrator_stats.js`   | `window.ORCH_STATS`  | `scripts/orchestrator_stats.py`   |
 | `live_tasks.js`           | `window.LIVE_TASKS`  | `scripts/dispatch_worker.py`      |
 | `agent_activity.js`       | `window.AGENT_ACTIVITY` | `scripts/agent_activity.py`    |
-| `analytics_data.js`       | `window.MMOI_ANALYTICS` | `scripts/build_analytics.py`   |
+| `analytics_data.js`       | `window.AOA_ANALYTICS` | `scripts/build_analytics.py`   |
 
 `index.html` includes them with plain `<script src="…">` tags and renders from
 the globals. A matching `.json` file is written alongside each `.js` for tools

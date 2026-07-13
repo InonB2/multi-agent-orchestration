@@ -1,4 +1,4 @@
-# Multi-Engine Agent Orchestration Upgrades (MMOI)
+# Multi-Engine Agent Orchestration Upgrades (AOA)
 
 Welcome to the GitHub Wiki page for the latest system upgrades and architectural enhancements integrated into the multi-engine agent orchestration framework. These updates optimize cognitive performance, cost-efficiency, load resilience, and telemetric visibility across all active engines.
 

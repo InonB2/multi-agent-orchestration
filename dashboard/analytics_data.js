@@ -1,4 +1,4 @@
-window.MMOI_ANALYTICS = {
+window.AOA_ANALYTICS = {
   "_meta": {
     "schema": 2,
     "generated_at": null,

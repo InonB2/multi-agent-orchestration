@@ -25,7 +25,7 @@ def test_log_command_appends_one_complete_jsonl_record(tmp_path, monkeypatch):
 
     vdl.main([
         "log",
-        "--task-id", "MMOI-201",
+        "--task-id", "AOA-201",
         "--summary", "Route a dashboard bugfix",
         "--recommended-model", "claude-opus-4.8",
         "--recommended-effort", "high",
@@ -38,7 +38,7 @@ def test_log_command_appends_one_complete_jsonl_record(tmp_path, monkeypatch):
 
     records = _read_lines(log_file)
     assert len(records) == 1
-    assert records[0]["task_id"] == "MMOI-201"
+    assert records[0]["task_id"] == "AOA-201"
     assert records[0]["summary"] == "Route a dashboard bugfix"
     assert records[0]["recommended_model"] == "claude-opus-4.8"
     assert records[0]["decided_model"] == "gpt-5"
@@ -52,7 +52,7 @@ def test_log_command_is_append_only(tmp_path, monkeypatch):
 
     vdl.main([
         "log",
-        "--task-id", "MMOI-201",
+        "--task-id", "AOA-201",
         "--summary", "First decision",
         "--recommended-model", "claude-opus-4.8",
         "--recommended-effort", "high",
@@ -64,7 +64,7 @@ def test_log_command_is_append_only(tmp_path, monkeypatch):
     ])
     vdl.main([
         "log",
-        "--task-id", "MMOI-202",
+        "--task-id", "AOA-202",
         "--summary", "Second decision",
         "--recommended-model", "claude-sonnet",
         "--recommended-effort", "low",
@@ -76,4 +76,4 @@ def test_log_command_is_append_only(tmp_path, monkeypatch):
     ])
 
     records = _read_lines(log_file)
-    assert [record["task_id"] for record in records] == ["MMOI-201", "MMOI-202"]
+    assert [record["task_id"] for record in records] == ["AOA-201", "AOA-202"]

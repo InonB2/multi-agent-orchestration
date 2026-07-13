@@ -10,7 +10,7 @@ Inputs:
     BKM/AGENT_LESSONS.md (optional)
 
 Output:
-    dashboard/analytics_data.js with window.MMOI_ANALYTICS = {...};
+    dashboard/analytics_data.js with window.AOA_ANALYTICS = {...};
 """
 
 from __future__ import annotations
@@ -1005,7 +1005,7 @@ def build_payload() -> dict:
 
 def write_output(payload: dict, path: Path = OUTPUT_FILE) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    source = "window.MMOI_ANALYTICS = " + json.dumps(payload, indent=2, ensure_ascii=False) + ";\n"
+    source = "window.AOA_ANALYTICS = " + json.dumps(payload, indent=2, ensure_ascii=False) + ";\n"
     path.write_text(source, encoding="utf-8")
 
 

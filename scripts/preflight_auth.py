@@ -130,7 +130,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Sequential CLI auth warm-up.")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--models", nargs="*",
-                        help="Models to probe (default: codex antigravity claude-code)")
+                       help="Models to probe (default: codex antigravity claude-code)")
     group.add_argument("--engines", nargs="*",
                        help="Registered adapter engines to probe generically")
     args = parser.parse_args()

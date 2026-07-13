@@ -60,17 +60,17 @@ def test_clear_resets_agent_to_idle_defaults(tmp_path, monkeypatch):
     aa.write_activity(aa.seed_activity_data(), activity_file)
     aa.main([
         "set",
-        "--agent", "andy",
+        "--agent", "orchestrator",
         "--model", "claude-opus-4.8",
         "--effort", "high",
         "--task", "Route work",
         "--status", "running",
         "--reason", "Dispatching agents",
     ])
-    aa.main(["clear", "--agent", "andy"])
+    aa.main(["clear", "--agent", "orchestrator"])
 
     payload = _read_activity(activity_file)
-    entry = next(item for item in payload["entries"] if item["agent"] == "andy")
+    entry = next(item for item in payload["entries"] if item["agent"] == "orchestrator")
 
     assert entry["status"] == "idle"
     assert entry["model"] is None
@@ -83,7 +83,7 @@ def test_clear_resets_agent_to_idle_defaults(tmp_path, monkeypatch):
     mirrored_payload = json.loads(
         _read_activity_js(activity_js_file).removeprefix("window.AGENT_ACTIVITY = ").removesuffix(";")
     )
-    mirrored_entry = next(item for item in mirrored_payload["entries"] if item["agent"] == "andy")
+    mirrored_entry = next(item for item in mirrored_payload["entries"] if item["agent"] == "orchestrator")
     assert mirrored_entry == entry
 
 

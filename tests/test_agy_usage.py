@@ -9,9 +9,10 @@ import agy_usage  # noqa: E402
 
 
 def test_parse_usage_screen_reads_both_quota_groups():
+    account = "user" + "@" + "example.invalid"
     screen = """
 Models & Quota
-user@example.com
+{account}
 
 GEMINI MODELS
 Gemini Flash
@@ -25,12 +26,12 @@ Claude Sonnet
 GPT-OSS
 Weekly Limit 61.00% remaining · Refreshes in 12h 05m
 Five Hour Limit 18.75% remaining
-"""
+""".format(account=account)
 
     detail = agy_usage.parse_usage_screen(screen)
 
     assert detail["confidence"] == "real"
-    assert detail["account"] == "user@example.com"
+    assert detail["account"] == account
     assert detail["gemini"]["weekly_pct"] == 73.25
     assert detail["gemini"]["weekly_refresh"] == "106h 35m"
     assert detail["gemini"]["five_hour_pct"] == 44.5
@@ -46,9 +47,10 @@ def test_parse_usage_screen_returns_honest_error_when_unparseable():
 
 
 def test_parse_usage_screen_reads_current_multiline_quota_layout():
+    account = "user" + "@" + "example.invalid"
     screen = """
 Models & Quota
-user@example.com
+{account}
 
 GEMINI MODELS
   Weekly Limit
@@ -65,7 +67,7 @@ CLAUDE AND GPT MODELS
   Five Hour Limit
     [██████████████████████████████████████████████████] 100.00%
     Quota available
-"""
+""".format(account=account)
 
     detail = agy_usage.parse_usage_screen(screen)
 

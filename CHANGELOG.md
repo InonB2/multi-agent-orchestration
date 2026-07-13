@@ -5,7 +5,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Audit — 2026-07-02 independent verification + remediation (reference deployment)
-Full cross-model audit of the MMOI reference deployment (auditor model ≠ verifier model ≠ fix QA).
+Full cross-model audit of the AOA reference deployment (auditor model ≠ verifier model ≠ fix QA).
 All 10 audited claims confirmed by live reproduction and fixed same day. Full write-up:
 [Wiki: Audit 2026-07-02 Remediation](https://github.com/InonB2/multi-agent-orchestration/wiki/Audit-2026-07-02-Remediation).
 
@@ -31,7 +31,7 @@ All 10 audited claims confirmed by live reproduction and fixed same day. Full wr
   `agent_activity.py`, `usage_bridge/` (per-engine usage ingestion), `codex_usage.py` /
   `extract_codex_usage.py`, `rate_wall_watchdog.py`, `v2_dispatch_log.py`. All with test coverage.
 - **Per-engine team profiles** (`agents/teams/{claude,codex,agy}/*.md`): role-based specialist
-  profiles per engine. See `agents/teams/AGENT_PROFILE_ARCHITECTURE.md` and Wiki: MMOI-Upgrades.
+  profiles per engine. See `agents/teams/AGENT_PROFILE_ARCHITECTURE.md` and Wiki: AOA-Upgrades.
 
 ### Changed
 - **2026-06-27 public-readiness docs pass:** refreshed `README.md` to describe the framework in role-based terms, expanded the shipped script surface (`task_router`, `coordinator`, `checkpoint`, `task_spec`, `agent_config`, `llm_provider`, `model_supervisor`, `preflight_auth`, `worktree_manager`, `worker_wrapper`), and clarified that Team-of-Teams (ToT) plus Per-Task Model & Effort (PTME) are present but still in development.

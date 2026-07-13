@@ -37,7 +37,7 @@ def test_dashboard_catch_is_clean_and_records_different_engines(tmp_path):
     assert entry["tester_engine"] == "tester-b"
     assert entry["status"] == "caught"
     assert entry["lifecycle_state"] == "in_progress"
-    assert "Inon" not in json.dumps(payload)
+    assert "PRIVATE_PERSON" not in json.dumps(payload)
 
 
 def test_shipped_dashboard_starts_empty():
@@ -67,7 +67,7 @@ def test_all_shipped_dashboard_feeds_have_no_runtime_history_or_personal_data():
         dashboard / "analytics_data.js",
     ]
     forbidden = re.compile(
-        r"20\d\d-\d\d-\d\d|Inon|Claude Playground|\\.codex\\sessions|prompt_preview",
+        r"20\d\d-\d\d-\d\d|PRIVATE_PERSON|private workspace|\\.codex\\sessions|prompt_preview",
         re.IGNORECASE,
     )
     for path in feeds:

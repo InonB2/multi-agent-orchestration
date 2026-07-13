@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>AOA architecture — orchestrate, verify, learn</title>
+  <style>
+    :root {
+      --bg: #f4f7fb; --panel: rgba(255,255,255,.94); --ink: #122033; --muted: #56657a;
+      --line: #8ea1b8; --blue: #1565d8; --blue-soft: #e8f1ff; --violet: #7557d5;
+      --violet-soft: #f0ebff; --green: #168565; --green-soft: #e5f7f1; --amber: #b86608;
+      --amber-soft: #fff3df; --shadow: 0 24px 70px rgba(32, 55, 88, .13);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1420; --panel: rgba(19,29,44,.96); --ink: #eef5ff; --muted: #a9b8cb;
+        --line: #71839b; --blue: #65a7ff; --blue-soft: #172b48; --violet: #b29cff;
+        --violet-soft: #292341; --green: #64d5b3; --green-soft: #15362f; --amber: #ffc06f;
+        --amber-soft: #3c2b18; --shadow: 0 24px 70px rgba(0,0,0,.34);
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 34px; background:
+      radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--blue) 14%, transparent), transparent 32%),
+      radial-gradient(circle at 90% 92%, color-mix(in srgb, var(--violet) 14%, transparent), transparent 34%), var(--bg);
+      color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { width: min(1540px, 100%); background: var(--panel); border: 1px solid color-mix(in srgb, var(--line) 28%, transparent);
+      border-radius: 30px; padding: 32px 54px 24px; box-shadow: var(--shadow); overflow: hidden; }
+    header { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 24px; }
+    .eyebrow { color: var(--blue); font-size: 13px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+    h1 { margin: 7px 0 5px; font-size: clamp(34px, 4vw, 54px); letter-spacing: -.045em; line-height: 1; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 18px; }
+    .promise { max-width: 430px; color: var(--muted); font-size: 15px; line-height: 1.5; text-align: right; }
+    .promise strong { color: var(--ink); }
+    svg { width: 100%; height: auto; display: block; }
+    .node rect { stroke-width: 2; rx: 18; }
+    .node text { fill: var(--ink); text-anchor: middle; font-size: 17px; font-weight: 760; }
+    .node .small { fill: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .025em; }
+    .core rect { fill: var(--blue-soft); stroke: var(--blue); }
+    .engine rect { fill: var(--violet-soft); stroke: var(--violet); }
+    .quality rect { fill: var(--green-soft); stroke: var(--green); }
+    .future rect { fill: var(--amber-soft); stroke: var(--amber); stroke-dasharray: 9 7; }
+    .arrow { fill: none; stroke: var(--line); stroke-width: 2.5; marker-end: url(#arrow); }
+    .feedback { fill: none; stroke: var(--green); stroke-width: 3; stroke-dasharray: 9 7; marker-end: url(#arrow-green); }
+    .future-arrow { fill: none; stroke: var(--amber); stroke-width: 2.5; stroke-dasharray: 8 7; marker-end: url(#arrow-amber); }
+    .edge-label { fill: var(--muted); font-size: 12px; font-weight: 700; text-anchor: middle; }
+    .lane-label { fill: var(--muted); font-size: 11px; font-weight: 850; letter-spacing: .14em; }
+    footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-top: 20px; color: var(--muted); font-size: 13px; }
+    .legend { display: flex; gap: 18px; flex-wrap: wrap; }
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--blue); }
+    .dot.engine { background: var(--violet); } .dot.quality { background: var(--green); } .dot.future { background: var(--amber); }
+    @media (max-width: 760px) { body { padding: 10px; } main { padding: 24px 16px; border-radius: 18px; } header { align-items: start; flex-direction: column; } .promise { text-align: left; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <div class="eyebrow">Agent Orchestration Architecture</div>
+      <h1>Orchestrate. Verify. Learn.</h1>
+      <p class="subtitle">One task lifecycle across heterogeneous AI engines.</p>
+    </div>
+    <div class="promise"><strong>Agents are commodities.</strong> The product is the routing, adapter, evidence, and independent-QA layer that makes their combined output dependable.</div>
+  </header>
+
+  <svg viewBox="0 0 1440 610" role="img" aria-labelledby="diagram-title diagram-desc">
+    <title id="diagram-title">AOA dispatch, QA, lifecycle, telemetry, and learning flow</title>
+    <desc id="diagram-desc">A task moves through PTME and adapters to multiple engines. Results go to independent QA, a lifecycle gate, dashboard telemetry, and a learning loop that feeds routing.</desc>
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--line)"/></marker>
+      <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--green)"/></marker>
+      <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--amber)"/></marker>
+    </defs>
+
+    <text class="lane-label" x="25" y="42">DECIDE</text>
+    <text class="lane-label" x="560" y="42">EXECUTE</text>
+    <text class="lane-label" x="940" y="42">VERIFY</text>
+
+    <path class="arrow" d="M235 155 H290"/><path class="arrow" d="M510 155 H565"/>
+    <path class="arrow" d="M805 155 H850 V128 H900"/>
+    <path class="arrow" d="M805 155 H850 V245 H900"/>
+    <path class="arrow" d="M805 155 H850 V362 H900"/>
+    <path class="arrow" d="M1125 128 H1160 V258"/>
+    <path class="arrow" d="M1125 245 H1160"/><path class="arrow" d="M1125 362 H1160 V318"/>
+    <path class="arrow" d="M1285 362 V410"/><path class="arrow" d="M1100 460 H1060"/>
+    <path class="arrow" d="M790 460 H770"/><path class="feedback" d="M530 460 H440 C350 460 330 375 330 315 V215"/>
+    <path class="future-arrow" d="M390 570 C500 570 505 225 565 190"/>
+
+    <g class="node core"><rect x="25" y="100" width="210" height="110"/><text x="130" y="146">Task</text><text class="small" x="130" y="172">GOAL + ACCEPTANCE</text></g>
+    <g class="node core"><rect x="290" y="100" width="220" height="110"/><text x="400" y="140">PTME / Router</text><text class="small" x="400" y="168">WHO CAN?</text><text class="small" x="400" y="188">CAPABILITY + EFFORT</text></g>
+    <g class="node core"><rect x="565" y="100" width="240" height="110"/><text x="685" y="140">Adapter Layer</text><text class="small" x="685" y="168">ONE SAFE CONTRACT</text><text class="small" x="685" y="188">STDIN + PREFLIGHT</text></g>
+
+    <g class="node engine"><rect x="900" y="82" width="225" height="92"/><text x="1012" y="121">Claude Code</text><text class="small" x="1012" y="145">ENGINE LANE</text></g>
+    <g class="node engine"><rect x="900" y="199" width="225" height="92"/><text x="1012" y="238">Codex</text><text class="small" x="1012" y="262">ENGINE LANE</text></g>
+    <g class="node engine"><rect x="900" y="316" width="225" height="92"/><text x="1012" y="355">AGY + New Engines</text><text class="small" x="1012" y="379">EXTENSIBLE LANES</text></g>
+
+    <g class="node quality"><rect x="1160" y="238" width="255" height="124"/><text x="1287" y="278">Independent QA</text><text class="small" x="1287" y="305">DIFFERENT ENGINE</text><text class="small" x="1287" y="326">TEST + EVIDENCE</text></g>
+    <g class="node quality"><rect x="1100" y="410" width="315" height="100"/><text x="1257" y="448">Lifecycle Gate</text><text class="small" x="1257" y="476">IN PROGRESS → TESTED → DONE</text></g>
+    <g class="node core"><rect x="790" y="410" width="270" height="100"/><text x="925" y="448">Dashboard + Telemetry</text><text class="small" x="925" y="476">STATUS • USAGE • QA</text></g>
+    <g class="node quality"><rect x="530" y="410" width="240" height="100"/><text x="650" y="448">Learning Loop</text><text class="small" x="650" y="476">VALIDATED FEEDBACK</text></g>
+
+    <g class="node future"><rect x="100" y="520" width="290" height="82"/><text x="245" y="552">AOA-11 Load Balancer</text><text class="small" x="245" y="578">WHO SHOULD? • QUOTAS + LOAD</text></g>
+    <text class="edge-label" x="485" y="555">planned capacity signal</text>
+    <text class="edge-label" x="430" y="432">learn</text>
+  </svg>
+
+  <footer>
+    <div class="legend"><span><i class="dot"></i> orchestration</span><span><i class="dot engine"></i> engines</span><span><i class="dot quality"></i> quality gates</span><span><i class="dot future"></i> planned</span></div>
+    <div>AOA · local-first · worker ≠ tester</div>
+  </footer>
+</main>
+</body>
+</html>

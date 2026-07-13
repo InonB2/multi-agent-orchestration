@@ -11,7 +11,7 @@ import build_analytics as ba  # noqa: E402
 
 def _read_js_payload(path: Path) -> dict:
     source = path.read_text(encoding="utf-8").strip()
-    prefix = "window.MMOI_ANALYTICS = "
+    prefix = "window.AOA_ANALYTICS = "
     assert source.startswith(prefix)
     assert source.endswith(";")
     return json.loads(source[len(prefix):-1])
@@ -27,7 +27,7 @@ def test_build_analytics_handles_missing_inputs_honestly(tmp_path, monkeypatch):
             {
                 "tasks": [
                     {
-                        "task_id": "MMOI-1",
+                        "task_id": "AOA-1",
                         "title": "Seed dashboard work",
                         "status": "in_progress",
                         "assigned_to": "codex",
@@ -87,7 +87,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
             {
                 "tasks": [
                     {
-                        "task_id": "MMOI-1",
+                        "task_id": "AOA-1",
                         "title": "Implement analytics",
                         "status": "tested",
                         "complexity": "L",
@@ -98,7 +98,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
                         ],
                     },
                     {
-                        "task_id": "MMOI-2",
+                        "task_id": "AOA-2",
                         "title": "Write content",
                         "status": "done",
                         "assigned_to": "agy",
@@ -106,7 +106,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
                         "completed_at": "2026-06-22T11:15:00Z",
                     },
                     {
-                        "task_id": "MMOI-3",
+                        "task_id": "AOA-3",
                         "title": "Pre-PTME quick task",
                         "status": "done",
                         "assigned_to": "coder",
@@ -125,7 +125,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
                     {
                         "ts": "2026-06-22T09:59:00Z",
                         "received_at": "2026-06-22T09:59:00Z",
-                        "task_id": "MMOI-1",
+                        "task_id": "AOA-1",
                         "complexity": "L",
                         "score_reasons": ["long text", "complex signals: refactor"],
                         "recommended_model": "gpt-5.3-codex",
@@ -142,7 +142,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
                     {
                         "ts": "2026-06-22T10:59:00Z",
                         "received_at": "2026-06-22T10:59:00Z",
-                        "task_id": "MMOI-2",
+                        "task_id": "AOA-2",
                         "complexity": "M",
                         "score_reasons": ["medium-length text"],
                         "recommended_model": "gemini-3.5-flash",
@@ -170,7 +170,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
                         "model": "gpt-5-codex",
                         "effort": "high",
                         "current_task": "Implement analytics",
-                        "task_id": "MMOI-1",
+                        "task_id": "AOA-1",
                         "status": "running",
                         "started_at": "2026-06-22T10:00:00Z",
                         "updated_at": "2026-06-22T10:30:00Z",
@@ -205,7 +205,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
                 "_meta": {"updated_at": "2026-06-22T12:05:00Z"},
                 "entries": [
                     {
-                        "task_id": "MMOI-1",
+                        "task_id": "AOA-1",
                         "worker_id": "codex-2",
                         "engine": "codex",
                         "status": "done",
@@ -214,7 +214,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
                         "started_at": "2026-06-22T10:00:00Z",
                         "completed_at": "2026-06-22T10:45:00Z",
                         "updated_at": "2026-06-22T10:45:00Z",
-                        "decision_ref": "MMOI-1@2026-06-22T09:59:00Z",
+                        "decision_ref": "AOA-1@2026-06-22T09:59:00Z",
                         "duration_seconds": 2700,
                         "usage": {
                             "duration_seconds": 2700,
@@ -222,7 +222,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
                         },
                     },
                     {
-                        "task_id": "MMOI-4",
+                        "task_id": "AOA-4",
                         "worker_id": "claude-w1",
                         "engine": "claude",
                         "status": "done",
@@ -231,7 +231,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
                         "started_at": "2026-06-22T12:00:00Z",
                         "completed_at": "2026-06-22T12:10:00Z",
                         "updated_at": "2026-06-22T12:10:00Z",
-                        "decision_ref": "MMOI-4@2026-06-22T11:59:00Z",
+                        "decision_ref": "AOA-4@2026-06-22T11:59:00Z",
                         "duration_seconds": 600,
                         "usage": {
                             "tokens_used": 1542,
@@ -250,7 +250,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
                 "entries": [
                     {
                         "agent": "codex",
-                        "task_id": "MMOI-1",
+                        "task_id": "AOA-1",
                         "window_pct": 80,
                         "tokens_used": 1200,
                         "token_budget": 2000,
@@ -300,13 +300,13 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
     assert payload["decisions"]["summary"]["overridden_count"] == 1
 
     decisions = {row["task_id"]: row for row in payload["decisions"]["rows"]}
-    assert decisions["MMOI-1"]["complexity"] == "L"
-    assert decisions["MMOI-1"]["changed"] is True
-    assert decisions["MMOI-1"]["judgment"] == "overridden"
-    assert decisions["MMOI-1"]["actual_usage_label"] == "45m"
-    assert decisions["MMOI-2"]["complexity"] == "M"
-    assert decisions["MMOI-2"]["changed"] is False
-    assert decisions["MMOI-2"]["judgment"] == "accepted"
+    assert decisions["AOA-1"]["complexity"] == "L"
+    assert decisions["AOA-1"]["changed"] is True
+    assert decisions["AOA-1"]["judgment"] == "overridden"
+    assert decisions["AOA-1"]["actual_usage_label"] == "45m"
+    assert decisions["AOA-2"]["complexity"] == "M"
+    assert decisions["AOA-2"]["changed"] is False
+    assert decisions["AOA-2"]["judgment"] == "accepted"
 
     # Complexity mix is ALWAYS ordered S, M, L, XL with all four tiers present.
     mix = payload["decisions"]["summary"]["complexity_mix"]
@@ -317,19 +317,19 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
     assert payload["decisions"]["legacy"]["count"] == 0
 
     runtime = {row["task_id"]: row for row in payload["runtime"]["tasks"]}
-    assert runtime["MMOI-1"]["runtime_minutes"] == 45
-    assert runtime["MMOI-1"]["agent"] == "codex"
-    assert runtime["MMOI-2"]["runtime_minutes"] == 15
-    assert runtime["MMOI-2"]["agent"] == "agy"
-    assert runtime["MMOI-3"]["runtime_minutes"] == 0
-    assert runtime["MMOI-3"]["runtime_seconds"] == 20
-    assert runtime["MMOI-3"]["runtime_display"] == "<1m"
-    assert runtime["MMOI-3"]["pre_ptme"] is True
+    assert runtime["AOA-1"]["runtime_minutes"] == 45
+    assert runtime["AOA-1"]["agent"] == "codex"
+    assert runtime["AOA-2"]["runtime_minutes"] == 15
+    assert runtime["AOA-2"]["agent"] == "agy"
+    assert runtime["AOA-3"]["runtime_minutes"] == 0
+    assert runtime["AOA-3"]["runtime_seconds"] == 20
+    assert runtime["AOA-3"]["runtime_display"] == "<1m"
+    assert runtime["AOA-3"]["pre_ptme"] is True
 
     live_tasks = {row["task_id"]: row for row in payload["live_tasks"]["rows"]}
-    assert live_tasks["MMOI-1"]["worker_id"] == "codex-2"
-    assert live_tasks["MMOI-1"]["usage"]["label"] == "45m"
-    assert live_tasks["MMOI-4"]["usage"]["tokens_used"] == 1542
+    assert live_tasks["AOA-1"]["worker_id"] == "codex-2"
+    assert live_tasks["AOA-1"]["usage"]["label"] == "45m"
+    assert live_tasks["AOA-4"]["usage"]["tokens_used"] == 1542
 
     per_agent = {row["agent"]: row for row in payload["per_agent_usage"]["rows"]}
     assert set(per_agent) == {"agy", "codex", "coder"}
@@ -349,7 +349,7 @@ def test_build_analytics_aggregates_real_runtime_decisions_and_usage(tmp_path, m
     assert per_agent["coder"]["total_runtime_seconds"] == 20
     assert per_agent["coder"]["total_runtime_display"] == "<1m"
     assert per_agent["coder"]["pre_ptme"] is True
-    assert per_agent["coder"]["pre_ptme_task_ids"] == ["MMOI-3"]
+    assert per_agent["coder"]["pre_ptme_task_ids"] == ["AOA-3"]
     assert per_agent["coder"]["model"] is None
     assert per_agent["coder"]["effort"] is None
 
