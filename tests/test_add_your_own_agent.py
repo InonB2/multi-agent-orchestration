@@ -29,6 +29,7 @@ def test_guide_adapter_runs_end_to_end_with_preflight_and_redacted_telemetry(tmp
     telemetry = tmp_path / "dispatch.jsonl"
     config = json.loads((ROOT / "aoa.config.json").read_text(encoding="utf-8"))
     config["dispatch"]["dashboard_telemetry"] = False
+    config["dispatch"]["adapters"]["example_echo"]["enabled"] = True
     config_path = tmp_path / "aoa.config.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
     env = os.environ.copy()
@@ -55,7 +56,7 @@ def test_guide_adapter_runs_end_to_end_with_preflight_and_redacted_telemetry(tmp
 def test_guide_adapter_is_discoverable_and_dry_run_is_prompt_free():
     listed = run_dispatch("--list-adapters")
     assert listed.returncode == 0
-    assert "example_echo\tadapters.example_echo\texample" in listed.stdout
+    assert "example_echo\tadapters.example_echo\tdisabled" in listed.stdout
 
     dry = run_dispatch(
         "--engine", "example_echo", "--prompt", "do not leak", "--dry-run"

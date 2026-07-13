@@ -81,7 +81,7 @@ The `example_echo` adapter intentionally ignores `model`, `effort`, and MCP. A
 real adapter must either map each supported field to verified CLI flags or
 document it as unsupported; it must not silently invent a mapping.
 
-## 3. Add one config entry
+## 3. Make one config edit
 
 Register the module and executable key under `dispatch.adapters`:
 
@@ -95,7 +95,11 @@ Register the module and executable key under `dispatch.adapters`:
 
 `engine` must match the config key exactly. `cli_key` selects an existing value
 under `cli`; add a new `cli.<engine>` value in the same config edit for a real
-binary. Set `enabled` to `true` only after live preflight and platform tests.
+binary. A disabled adapter is visible to `--list-adapters` and can produce a
+redacted dry-run plan, but live `dispatch.py` exits 1 with a disabled-adapter
+configuration error. Programmatic dispatch raises `ValueError`, and
+`parallel_dispatch.py` rejects the task before launch. Set `enabled` to `true`
+only after fixture/dry-run review and when ready for a live preflight.
 
 Direct `dispatch.py` needs only that registration. To use the engine in
 `parallel_dispatch.py` and PTME routing, the same config edit must also add:
@@ -103,6 +107,11 @@ Direct `dispatch.py` needs only that registration. To use the engine in
 - `engine_limits.<engine>` with a conservative verified concurrency cap;
 - one `models.capabilities` entry whose `family` is the engine; and
 - a complete S/M/L/XL `models.ladders.<engine>` mapping.
+
+PTME derives valid engines and native model families from those config rows; it
+does not contain an engine allowlist. If a CLI legitimately runs models owned
+by other engine families, add a verified `model_families` list to its adapter
+registration. AGY uses this field for its verified multi-family behavior.
 
 The reference registration uses `example_echo: 2` and the synthetic
 `example-echo` model. These are test fixture values, not vendor claims.
@@ -113,14 +122,15 @@ From the repository root:
 
 ```bash
 python scripts/dispatch.py --list-adapters
-printf '%s' 'cold path prompt' | python scripts/dispatch.py \
-  --engine example_echo --workdir . --task-id COLD-1 --role worker
 python scripts/dispatch.py --engine example_echo \
   --prompt 'must stay private' --dry-run
+# Review the plan, then set example_echo.enabled to true in aoa.config.json.
+printf '%s' 'cold path prompt' | python scripts/dispatch.py \
+  --engine example_echo --workdir . --task-id COLD-1 --role worker
 python -m pytest tests/test_add_your_own_agent.py tests/test_dispatch.py -q
 ```
 
-On PowerShell, replace the piped command with:
+On PowerShell, after the same config enablement, replace the piped command with:
 
 ```powershell
 'cold path prompt' | python scripts/dispatch.py --engine example_echo `
@@ -146,9 +156,11 @@ Unicode, a workdir containing spaces, model/effort mappings, MCP-off behavior,
 telemetry redaction, and the configured parallel cap. Run live smoke tests on
 Windows, macOS, and Linux; CI fixtures alone do not establish live CLI support.
 
-Fallback is explicit: if discovery, preflight, or parsing fails, disable the
-adapter and route to another configured engine. Never report a failed or empty
-run as success.
+Fallback is explicit and owned by the caller: if discovery, preflight, or
+parsing fails, set `enabled` to `false` and route the task to another enabled
+engine. The dispatcher never silently substitutes an engine. Disabled direct
+dispatch fails with exit 1; disabled parallel dispatch is rejected during plan
+validation. Never report a failed or empty run as success.
 
 ## Honest effort estimate for an additional real engine
 

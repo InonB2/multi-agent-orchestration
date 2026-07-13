@@ -12,7 +12,7 @@ import signal
 import subprocess
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -88,11 +88,13 @@ def _safe_lifecycle(path: Path, event: str, request: DispatchRequest, task_id: s
             pass
 
 
-def _load_adapter(config: dict, engine: str):
+def _load_adapter(config: dict, engine: str, *, allow_disabled: bool = False):
     adapters = config.get("dispatch", {}).get("adapters", {})
     entry = adapters.get(engine)
     if not isinstance(entry, dict) or not entry.get("module"):
         raise ValueError(f"No dispatch adapter configured for engine '{engine}'")
+    if not entry.get("enabled", True) and not allow_disabled:
+        raise ValueError(f"Dispatch adapter '{engine}' is disabled in aoa.config.json")
     module = importlib.import_module(str(entry["module"]))
     adapter = module.Adapter()
     if adapter.engine != engine:
@@ -161,7 +163,7 @@ def dispatch_request(request: DispatchRequest, *, task_id: str = "ad-hoc", role:
                      telemetry_path: Path | None = None, config: dict | None = None,
                      emit_telemetry: bool = True) -> DispatchResult:
     config = config if config is not None else config_loader.load_aoa_config()
-    adapter, entry = _load_adapter(config, request.engine)
+    adapter, entry = _load_adapter(config, request.engine, allow_disabled=dry_run)
     configured_executable = request.executable or _configured_executable(config, request.engine, entry)
     if dry_run:
         executable = configured_executable
@@ -204,7 +206,8 @@ def dispatch_request(request: DispatchRequest, *, task_id: str = "ad-hoc", role:
     if preflight:
         probe_text, expected = adapter.probe_prompt()
         probe_request = DispatchRequest(request.engine, probe_text, request.workdir,
-                                        min(request.timeout, int(config.get("timeouts", {}).get("health_probe_seconds", 90))),
+                                        min(request.timeout, int(config.get("timeouts", {}).get(
+                                            "health_probe_seconds", 90))),
                                         request.model, request.effort, request.enable_mcp,
                                         request.executable)
         probe_invocation = adapter.build(probe_request, executable, SCRIPTS)
@@ -281,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
     config = config_loader.load_aoa_config()
     if args.list_adapters:
         for name, entry in sorted(config.get("dispatch", {}).get("adapters", {}).items()):
-            print(f"{name}\t{entry.get('module')}\t{'enabled' if entry.get('enabled', True) else 'example'}")
+            print(f"{name}\t{entry.get('module')}\t{'enabled' if entry.get('enabled', True) else 'disabled'}")
         return 0
     if not args.engine:
         print("[ERROR] --engine is required", file=sys.stderr)

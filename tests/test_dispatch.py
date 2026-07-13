@@ -41,7 +41,7 @@ def req(tmp_path, prompt="hello", timeout=3):
 
 @pytest.fixture
 def fake_core(monkeypatch):
-    monkeypatch.setattr(dispatch, "_load_adapter", lambda config, engine: (FakeAdapter(), {"module": "fake"}))
+    monkeypatch.setattr(dispatch, "_load_adapter", lambda config, engine, **kwargs: (FakeAdapter(), {"module": "fake"}))
     monkeypatch.setattr(dispatch, "_resolve_executable", lambda config, engine, entry: sys.executable)
     monkeypatch.setattr(dispatch, "_configured_executable", lambda config, engine, entry: sys.executable)
 
@@ -104,7 +104,7 @@ def test_success_and_failure_telemetry_and_capture(fake_core, monkeypatch, tmp_p
 
 
 def test_missing_executable_fails_loud(monkeypatch, tmp_path):
-    monkeypatch.setattr(dispatch, "_load_adapter", lambda config, engine: (FakeAdapter(), {"module": "fake"}))
+    monkeypatch.setattr(dispatch, "_load_adapter", lambda config, engine, **kwargs: (FakeAdapter(), {"module": "fake"}))
     monkeypatch.setattr(dispatch, "_resolve_executable", lambda config, engine, entry: "")
     telemetry = tmp_path / "missing.jsonl"
     result = dispatch.dispatch_request(req(tmp_path), preflight=False, config={},
@@ -145,12 +145,26 @@ def test_shipped_adapters_keep_prompt_out_of_outer_argv(adapter, tmp_path):
 
 def test_adapter_registration_is_config_driven(monkeypatch, tmp_path):
     config = {"cli": {"python": sys.executable}, "dispatch": {"adapters": {
-        "stub": {"module": "adapters.stub", "cli_key": "python", "enabled": False}
+        "stub": {"module": "adapters.stub", "cli_key": "python", "enabled": True}
     }}}
     request = DispatchRequest("stub", "hello", tmp_path, 3)
     result = dispatch.dispatch_request(request, preflight=False, config=config)
     assert result.exit_code == 0
     assert result.message == "AOA_STUB_OK"
+
+
+def test_disabled_adapter_cannot_dispatch_but_can_be_inspected_by_dry_run(tmp_path):
+    config = {"cli": {"python": sys.executable}, "dispatch": {"adapters": {
+        "stub": {"module": "adapters.stub", "cli_key": "python", "enabled": False}
+    }}}
+    request = DispatchRequest("stub", "private", tmp_path, 3)
+
+    with pytest.raises(ValueError, match="disabled"):
+        dispatch.dispatch_request(request, preflight=False, config=config)
+
+    dry = dispatch.dispatch_request(request, dry_run=True, config=config)
+    assert dry.status == "dry_run"
+    assert "private" not in dry.message
 
 
 def test_codex_parser_last_agent_message():

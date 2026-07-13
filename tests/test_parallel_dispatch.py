@@ -23,7 +23,7 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 def test_dispatch_logs_decisions_and_respects_engine_caps(tmp_path):
     plan = []
-    engines = ("agy", "codex", "claude", "stub")
+    engines = ("agy", "codex", "claude")
     for idx in range(6):
         for engine in engines:
             plan.append({"id": f"{engine.upper()}-{idx}", "text": f"Task {idx}", "engine": engine})
@@ -55,7 +55,6 @@ def test_dispatch_logs_decisions_and_respects_engine_caps(tmp_path):
         codex_root=tmp_path / "codex-workers",
         workspace_roots={
             "claude": tmp_path / "claude-workers",
-            "stub": tmp_path / "stub-workers",
         },
     )
 
@@ -64,7 +63,6 @@ def test_dispatch_logs_decisions_and_respects_engine_caps(tmp_path):
     assert state["max_seen"]["agy"] == 3
     assert state["max_seen"]["codex"] == 3
     assert state["max_seen"]["claude"] == 1
-    assert state["max_seen"]["stub"] == 1
 
     workspaces = [item["workspace"] for item in results]
     assert len(workspaces) == len(set(workspaces))
@@ -91,6 +89,7 @@ def test_public_command_shape_never_contains_prompt(tmp_path):
 
 def test_default_launcher_uses_common_dispatch_contract(monkeypatch, tmp_path):
     seen = {}
+
     def fake_dispatch(request, **kwargs):
         seen["request"] = request
         seen["kwargs"] = kwargs
@@ -122,3 +121,17 @@ def test_dispatch_rejects_duplicate_output_dirs(tmp_path):
         assert "workspace" in str(exc).lower()
     else:
         raise AssertionError("Expected duplicate task IDs to be rejected")
+
+
+def test_parallel_dispatch_rejects_disabled_adapter(tmp_path):
+    plan = [{"id": "DISABLED-1", "text": "Task", "engine": "example_echo"}]
+    try:
+        pd.dispatch_tasks(
+            plan,
+            launcher=lambda task, workspace, decision: 0,
+            decision_log_path=tmp_path / "ptme.jsonl",
+        )
+    except ValueError as exc:
+        assert "disabled" in str(exc).lower()
+    else:
+        raise AssertionError("Expected disabled adapter to be rejected")

@@ -31,7 +31,7 @@
     "adapters": {
       "claude": {"module": "adapters.claude", "cli_key": "claude", "enabled": true},
       "codex": {"module": "adapters.codex", "cli_key": "codex", "enabled": true},
-      "agy": {"module": "adapters.agy", "cli_key": "agy", "enabled": true},
+      "agy": {"module": "adapters.agy", "cli_key": "agy", "enabled": true, "model_families": ["gemini", "claude", "gpt-oss"]},
       "stub": {"module": "adapters.stub", "cli_key": "python", "enabled": false},
       "example_echo": {"module": "adapters.example_echo", "cli_key": "python", "enabled": false}
     }

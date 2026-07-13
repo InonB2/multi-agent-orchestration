@@ -48,6 +48,8 @@ def _validate_task(task: dict) -> None:
             raise ValueError("Task missing required field '{}'".format(required))
     if task["engine"] not in ENGINE_LIMITS:
         raise ValueError("Unsupported engine '{}'".format(task["engine"]))
+    if not _ADAPTERS[task["engine"]].get("enabled", True):
+        raise ValueError("Engine '{}' is disabled".format(task["engine"]))
 
 
 def _codex_workspace(task_id: str, root: Path) -> Path:
