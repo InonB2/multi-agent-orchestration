@@ -139,7 +139,7 @@ def run_demo() -> int:
     import coordinator
     coordinator.TASKS_FILE = tasks_file
 
-    print("AOA hello-org demo")
+    print("AOa hello-org demo")
     print("worker engine: {}".format(worker))
     print("tester engine: {}".format(tester))
     coordinator.cmd_claim(["--task", TASK_ID, "--model", worker])

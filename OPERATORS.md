@@ -31,12 +31,21 @@ Review the preview before applying it.
 
 ## Specify and claim work
 
+Tasks live in the `tasks` array in `tasks/active_tasks.json`. Register a new task
+there before creating its spec; after installation seeds that file, this
+cross-platform command appends a minimal claimable task:
+
+```bash
+python -c "import json,pathlib; p=pathlib.Path('tasks/active_tasks.json'); d=json.loads(p.read_text()); d['tasks'].append({'task_id':'TASK-101','title':'Inspect repository','complexity':'M','status':'pending'}); p.write_text(json.dumps(d, indent=2)+'\n')"
+```
+
 Medium, large, and extra-large tasks need a valid spec before supervised execution:
 
 ```bash
 python scripts/task_spec.py create --task TASK-101 --done "Repository inspected" --remaining "Implementation and tests" --next "Implement the smallest change" --criteria "All targeted tests pass"
 python scripts/task_spec.py validate --task TASK-101
 python scripts/coordinator.py claim --task TASK-101 --model codex
+python scripts/dispatch.py --engine codex --prompt "Implement TASK-101" --workdir . --task-id TASK-101 --role worker --dry-run
 ```
 
 Claims use a cross-process lock and reject tasks already `in_progress`, `tested`, or

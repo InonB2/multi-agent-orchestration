@@ -77,8 +77,9 @@ independent tester: CAUGHT planted Unicode casefold defect
 task state: in_progress (never advanced to tested/done)
 ```
 
-The installer starts the runtime dashboard at <http://127.0.0.1:7780/>. Demo state
-and telemetry are written under gitignored `.aoa/`; tracked product files stay clean.
+The installer starts the runtime dashboard at <http://127.0.0.1:7780/>, or prints
+the start command when `-NoOpen`/`--no-open` is used. Demo state and telemetry are
+written under gitignored `.aoa/`; tracked product files stay clean.
 
 For a complete cold walkthrough and recovery notes, see
 [`examples/quickstart.md`](examples/quickstart.md). For day-to-day commands and QA
