@@ -1,31 +1,30 @@
 #!/usr/bin/env python3
-"""
-parallel_dispatch.py — coordinated multi-flight dispatch for agy and codex.
-
-Claude-team workers are dispatched by Root directly, not through this script.
-"""
+"""Concurrent dispatch through AOA's configured agent adapters."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import subprocess
+import sys
+from contextlib import ExitStack
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import agy_workspace
+import dispatch as aoa_dispatch
 import ptme
+from adapters.base import DispatchRequest
+from config_loader import load_aoa_config
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_AGY_ROOT = Path("D:/agy-workers")
-DEFAULT_CODEX_ROOT = ROOT / "scratchpad" / "codex-workers"
+AOA_CONFIG = load_aoa_config()
+DEFAULT_AGY_ROOT = Path(AOA_CONFIG["paths"]["agy_workers"])
+DEFAULT_CODEX_ROOT = Path(AOA_CONFIG["paths"]["codex_workers"])
+DEFAULT_CLAUDE_ROOT = Path(AOA_CONFIG["paths"].get("claude_workers", ROOT / "workspaces" / "claude"))
+_ADAPTERS = AOA_CONFIG.get("dispatch", {}).get("adapters", {})
 ENGINE_LIMITS = {
-    "agy": 3,
-    "codex": 3,
-}
-ENGINE_FAMILIES = {
-    "agy": "agy",
-    "codex": "codex",
+    engine: int(AOA_CONFIG.get("engine_limits", {}).get(engine, entry.get("max_parallel", 1)))
+    for engine, entry in _ADAPTERS.items()
 }
 
 
@@ -58,46 +57,44 @@ def _codex_workspace(task_id: str, root: Path) -> Path:
     return workspace
 
 
-def assign_workspace(task: dict, agy_root: Path, codex_root: Path) -> Path:
+def assign_workspace(task: dict, agy_root: Path, codex_root: Path,
+                     workspace_roots: dict[str, Path] | None = None) -> Path:
     if task["engine"] == "agy":
         return agy_workspace.provision_workspace(task["id"], root=agy_root)
-    return _codex_workspace(task["id"], root=codex_root)
+    roots = {"codex": codex_root, "claude": DEFAULT_CLAUDE_ROOT}
+    roots.update(workspace_roots or {})
+    return _codex_workspace(task["id"], root=Path(roots.get(
+        task["engine"], ROOT / "workspaces" / task["engine"]
+    )))
 
 
 def build_engine_command(task: dict, workspace: Path) -> list[str]:
-    if task["engine"] == "agy":
-        return [
-            "powershell",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(ROOT / "scripts" / "invoke_agy.ps1"),
-            "-WorkspaceDir",
-            str(workspace),
-            "-Prompt",
-            task["text"],
-        ]
-
+    """Return the prompt-free public command shape for diagnostics/dry-runs."""
     return [
-        "codex",
-        "exec",
-        "--cd",
-        str(workspace),
-        task["text"],
+        AOA_CONFIG["cli"].get("python", sys.executable),
+        str(ROOT / "scripts" / "dispatch.py"),
+        "--engine", task["engine"],
+        "--workdir", str(workspace),
+        "--task-id", task["id"],
     ]
 
 
 def subprocess_launcher(task: dict, workspace: Path, decision: dict) -> int:
-    del decision
-    command = build_engine_command(task, workspace)
-    result = subprocess.run(
-        command,
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        shell=False,
+    adapter_config = _ADAPTERS[task["engine"]]
+    timeout = int(
+        adapter_config.get("timeout_seconds")
+        or AOA_CONFIG.get("timeouts", {}).get(f"{task['engine']}_dispatch_seconds", 600)
     )
-    return result.returncode
+    request = DispatchRequest(
+        engine=task["engine"], prompt=task["text"], workdir=workspace,
+        timeout=timeout, model=decision.get("decided_model"),
+        effort=decision.get("decided_effort"),
+    )
+    result = aoa_dispatch.dispatch_request(
+        request, task_id=task["id"], role=task.get("role", "worker"),
+        config=AOA_CONFIG,
+    )
+    return result.exit_code
 
 
 def _prepare_dispatch(
@@ -105,13 +102,17 @@ def _prepare_dispatch(
     agy_root: Path,
     codex_root: Path,
     decided_by: str,
+    workspace_roots: dict[str, Path] | None = None,
 ) -> list[dict]:
     prepared = []
     seen_workspaces = set()
 
     for index, task in enumerate(tasks):
         _validate_task(task)
-        workspace = assign_workspace(task, agy_root=agy_root, codex_root=codex_root)
+        workspace = assign_workspace(
+            task, agy_root=agy_root, codex_root=codex_root,
+            workspace_roots=workspace_roots,
+        )
         workspace_key = str(workspace.resolve()).lower()
         if workspace_key in seen_workspaces:
             raise ValueError(
@@ -120,9 +121,12 @@ def _prepare_dispatch(
         seen_workspaces.add(workspace_key)
 
         complexity = ptme.classify_complexity(task["text"])
-        default_model, default_effort = ptme.recommend_for_complexity(
-            complexity, family=ENGINE_FAMILIES[task["engine"]]
-        )
+        try:
+            default_model, default_effort = ptme.recommend_for_complexity(
+                complexity, family=task["engine"]
+            )
+        except ValueError:
+            default_model, default_effort = ptme.recommend_for_complexity(complexity)
         recommended_model, recommended_effort = _task_recommendation(task)
         override_model, override_effort = _task_override(task)
 
@@ -134,6 +138,7 @@ def _prepare_dispatch(
             override_model=override_model,
             override_effort=override_effort,
             decided_by=task.get("decided_by", decided_by),
+            engine=task["engine"],
         )
 
         prepared.append({
@@ -153,6 +158,7 @@ def dispatch_tasks(
     agy_root: Path = DEFAULT_AGY_ROOT,
     codex_root: Path = DEFAULT_CODEX_ROOT,
     decided_by: str = "local_orchestrator",
+    workspace_roots: dict[str, Path] | None = None,
 ) -> list[dict]:
     launcher = launcher or subprocess_launcher
     tasks = list(tasks)
@@ -167,6 +173,7 @@ def dispatch_tasks(
             agy_root=agy_root,
             codex_root=codex_root,
             decided_by=decided_by,
+            workspace_roots=workspace_roots,
         )
     finally:
         ptme.LOG_FILE = original_log_file
@@ -174,14 +181,11 @@ def dispatch_tasks(
     results = []
     future_map = {}
 
-    with ThreadPoolExecutor(max_workers=ENGINE_LIMITS["agy"]) as agy_pool, ThreadPoolExecutor(
-        max_workers=ENGINE_LIMITS["codex"]
-    ) as codex_pool:
+    with ExitStack() as stack:
         pools = {
-            "agy": agy_pool,
-            "codex": codex_pool,
+            engine: stack.enter_context(ThreadPoolExecutor(max_workers=ENGINE_LIMITS[engine]))
+            for engine in sorted({item["task"]["engine"] for item in prepared})
         }
-
         for item in prepared:
             pool = pools[item["task"]["engine"]]
             future = pool.submit(launcher, item["task"], item["workspace"], item["decision"])
@@ -234,7 +238,7 @@ def format_summary(results: list[dict]) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Parallel agy/codex coordinator")
+    parser = argparse.ArgumentParser(description="Parallel configured-adapter coordinator")
     parser.add_argument("--plan", required=True, help="Path to a JSON plan file")
     return parser
 

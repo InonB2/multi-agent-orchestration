@@ -28,6 +28,7 @@ report_path      = "agents/orchestrator/inbox/"
 # "cli" = invoke via a local CLI tool (Claude Code, Codex CLI, etc.)
 # "api" = call an OpenAI-compatible or Anthropic REST endpoint directly
 type = "cli"
+adapter = "claude"
 
 # For type = "cli": extra arguments inserted BETWEEN the CLI command and the
 # prompt, i.e. the process is run as: <cli_cmd> <cli_exec_args...> "<prompt>".

@@ -11,6 +11,7 @@ handoff_to      = "security"
 
 [provider]
 type = "cli"
+adapter = "codex"
 # Codex MUST be run via its `exec` subcommand for non-interactive use. The bare
 # `codex "<prompt>"` opens an interactive TUI that hangs in automation (no TTY),
 # which looks like "codex stops working". `codex exec` runs headless with

@@ -23,13 +23,14 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 def test_dispatch_logs_decisions_and_respects_engine_caps(tmp_path):
     plan = []
+    engines = ("agy", "codex", "claude", "stub")
     for idx in range(6):
-        plan.append({"id": f"AGY-{idx}", "text": f"Research task {idx}", "engine": "agy"})
-        plan.append({"id": f"CODEX-{idx}", "text": f"Implement task {idx}", "engine": "codex"})
+        for engine in engines:
+            plan.append({"id": f"{engine.upper()}-{idx}", "text": f"Task {idx}", "engine": engine})
 
     state = {
-        "current": {"agy": 0, "codex": 0},
-        "max_seen": {"agy": 0, "codex": 0},
+        "current": {engine: 0 for engine in engines},
+        "max_seen": {engine: 0 for engine in engines},
         "workspaces": [],
     }
     lock = threading.Lock()
@@ -52,12 +53,18 @@ def test_dispatch_logs_decisions_and_respects_engine_caps(tmp_path):
         decision_log_path=log_file,
         agy_root=tmp_path / "agy-workers",
         codex_root=tmp_path / "codex-workers",
+        workspace_roots={
+            "claude": tmp_path / "claude-workers",
+            "stub": tmp_path / "stub-workers",
+        },
     )
 
     assert len(results) == len(plan)
     assert len(_read_jsonl(log_file)) == len(plan)
     assert state["max_seen"]["agy"] == 3
     assert state["max_seen"]["codex"] == 3
+    assert state["max_seen"]["claude"] == 1
+    assert state["max_seen"]["stub"] == 1
 
     workspaces = [item["workspace"] for item in results]
     assert len(workspaces) == len(set(workspaces))
@@ -68,8 +75,33 @@ def test_dispatch_logs_decisions_and_respects_engine_caps(tmp_path):
         assert workspace.exists()
         if item["engine"] == "agy":
             assert workspace.parent == tmp_path / "agy-workers"
-        else:
+        elif item["engine"] == "codex":
             assert workspace.parent == tmp_path / "codex-workers"
+        else:
+            assert workspace.parent == tmp_path / f"{item['engine']}-workers"
+
+
+def test_public_command_shape_never_contains_prompt(tmp_path):
+    task = {"id": "CLAUDE-1", "text": "PRIVATE PROMPT", "engine": "claude"}
+    command = pd.build_engine_command(task, tmp_path / "workspace with spaces")
+    assert "PRIVATE PROMPT" not in command
+    assert command[command.index("--engine") + 1] == "claude"
+    assert "dispatch.py" in " ".join(command)
+
+
+def test_default_launcher_uses_common_dispatch_contract(monkeypatch, tmp_path):
+    seen = {}
+    def fake_dispatch(request, **kwargs):
+        seen["request"] = request
+        seen["kwargs"] = kwargs
+        return pd.aoa_dispatch.DispatchResult("claude", "success", 0, "ok", "", "", 0)
+    monkeypatch.setattr(pd.aoa_dispatch, "dispatch_request", fake_dispatch)
+    task = {"id": "CLAUDE-2", "text": "stdin-only", "engine": "claude", "role": "qa"}
+    decision = {"decided_model": "model", "decided_effort": "low"}
+    assert pd.subprocess_launcher(task, tmp_path, decision) == 0
+    assert seen["request"].prompt == "stdin-only"
+    assert seen["request"].workdir == tmp_path
+    assert seen["kwargs"]["task_id"] == "CLAUDE-2"
 
 
 def test_dispatch_rejects_duplicate_output_dirs(tmp_path):

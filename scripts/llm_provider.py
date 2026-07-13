@@ -32,6 +32,10 @@ from pathlib import Path
 
 # QA-1: Import shared utilities from config_loader instead of duplicating them
 import config_loader as cl
+import dispatch as aoa_dispatch
+from adapters.base import DispatchRequest
+
+AOA_CONFIG = cl.load_aoa_config()
 
 ROOT       = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config" / "agents"
@@ -96,7 +100,24 @@ def _resolve_cli_cmd(config: dict, agent_name: str) -> str:
     binary identically (PTME T-CODE-03).
     """
     provider = config.get("provider", {})
-    return provider.get("cli_cmd") or config.get("agent", {}).get("preferred_model", agent_name)
+    aliases = {
+        "antigravity": "agy",
+        "agy": "agy",
+        "claude-code": "claude",
+        "claude": "claude",
+        "codex": "codex",
+    }
+    candidate = (
+        provider.get("cli_cmd")
+        or config.get("agent", {}).get("preferred_model")
+        or agent_name
+    )
+    candidate_name = Path(str(candidate)).name.lower()
+    if candidate_name.endswith(".exe"):
+        candidate_name = candidate_name[:-4]
+    engine_key = aliases.get(agent_name.lower()) or aliases.get(candidate_name)
+    configured = AOA_CONFIG.get("cli", {}).get(engine_key) if engine_key else None
+    return configured or candidate
 
 
 def _load_task_overrides(task_id: str):
@@ -271,33 +292,20 @@ def resolve_execution_profile(
     }
 
 
-def _assemble_cli_argv(cli_cmd, exec_args, model, effort, prompt):
-    """Build the subprocess argv + optional env override for a CLI provider.
-
-    Returns (argv, env_override). env_override is None unless the binary needs a
-    modified environment (agy → TERM=xterm to prevent headless hangs). Model and
-    effort flags are mapped per the confirmed CLI controls:
-      * codex: -m <model>  -c model_reasoning_effort="<effort>"
-      * agy:   --model <model>   (no effort flag — model slug carries the tier)
-    """
-    argv = [cli_cmd, *exec_args]
-    cli_cmd_lower = str(cli_cmd).lower()
-    env_override = None
-
-    if "codex" in cli_cmd_lower:
-        if model:
-            argv.extend(["-m", model])
-        if effort:
-            argv.extend(["-c", 'model_reasoning_effort="{}"'.format(effort)])
-    elif "agy" in cli_cmd_lower or "antigravity" in cli_cmd_lower:
-        if model:
-            argv.extend(["--model", model])
-            argv.append("--print")
-        env_override = os.environ.copy()
-        env_override["TERM"] = "xterm"
-
-    argv.append(prompt)
-    return (argv, env_override)
+def _dispatch_engine(config: dict, agent_name: str, cli_cmd: str) -> str:
+    """Resolve the adapter only from provider configuration, never core guesses."""
+    adapter = config.get("provider", {}).get("adapter")
+    if adapter:
+        return str(adapter)
+    candidate = Path(str(cli_cmd)).stem.lower()
+    for name, entry in AOA_CONFIG.get("dispatch", {}).get("adapters", {}).items():
+        cli_key = str(entry.get("cli_key") or name)
+        configured = str(AOA_CONFIG.get("cli", {}).get(cli_key) or cli_key)
+        if candidate in {cli_key.lower(), Path(configured).stem.lower()}:
+            return str(name)
+    raise ValueError(
+        "CLI agent '{}' has no provider.adapter; configure a dispatch adapter".format(agent_name)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -423,35 +431,36 @@ def cmd_run(args) -> None:
         final_model = profile["model"]
         final_effort = profile["effort"]
 
-        argv, env_override = _assemble_cli_argv(
-            cli_cmd, exec_args, final_model, final_effort, prompt
+        try:
+            engine = _dispatch_engine(config, agent_name, cli_cmd)
+        except ValueError as exc:
+            print("[ERROR] {}".format(exc), file=sys.stderr)
+            sys.exit(1)
+        request = DispatchRequest(
+            engine=engine,
+            prompt=prompt,
+            workdir=Path(AOA_CONFIG.get("paths", {}).get("workdir") or ROOT).resolve(),
+            timeout=int(AOA_CONFIG.get("timeouts", {}).get(
+                "{}_dispatch_seconds".format(engine), 600
+            )),
+            model=final_model,
+            effort=final_effort,
+            executable=cli_cmd,
         )
-        print("CLI command: {}".format(" ".join(argv[:-1]) + " \"{}\"".format(prompt)))
-
-        if not dry_run:
-            try:
-                subprocess_kwargs = {
-                    "capture_output": True,
-                    "text": True,
-                    # Close stdin: exec-style CLIs (e.g. `codex exec`) read stdin
-                    # and block forever waiting on EOF when launched detached/
-                    # without a TTY. DEVNULL gives an immediate EOF.
-                    "stdin": subprocess.DEVNULL,
-                }
-                if env_override is not None:
-                    subprocess_kwargs["env"] = env_override
-                result = subprocess.run(argv, **subprocess_kwargs)
-                if result.stdout:
-                    print(result.stdout)
-                if result.stderr:
-                    print(result.stderr, file=sys.stderr)
-                sys.exit(result.returncode)
-            except FileNotFoundError:
-                print(
-                    "[ERROR] CLI tool '{}' not found on PATH.".format(cli_cmd),
-                    file=sys.stderr,
-                )
-                sys.exit(1)
+        result = aoa_dispatch.dispatch_request(
+            request,
+            task_id=arg_task_id or "ad-hoc",
+            role=agent_name,
+            dry_run=dry_run,
+            preflight=not getattr(args, "skip_preflight", False),
+            config=AOA_CONFIG,
+        )
+        if result.message:
+            print(result.message)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+        if result.exit_code:
+            sys.exit(result.exit_code)
         return
 
     # ---- API mode ----
@@ -481,7 +490,9 @@ def cmd_run(args) -> None:
         max_tokens = int(provider.get("max_tokens", 4096))
 
         # REL-1: read per-provider timeout from TOML, default 60s
-        timeout_seconds = int(provider.get("timeout_seconds", 60))
+        timeout_seconds = int(provider.get(
+            "timeout_seconds", AOA_CONFIG["timeouts"]["api_request_seconds"]
+        ))
 
         if is_anth:
             endpoint = "{}/messages".format(api_base_url.rstrip("/"))
@@ -642,6 +653,8 @@ def main() -> None:
     p_run.add_argument("--prompt",  required=True, help="Task prompt text")
     p_run.add_argument("--dry-run", action="store_true",
                        help="Print what would be done without executing")
+    p_run.add_argument("--skip-preflight", action="store_true",
+                       help="Skip live CLI health/auth probe (testing only)")
     # PTME per-task model + effort selection (all optional, additive).
     p_run.add_argument("--task-id", help="Task ID to load model/effort context from active_tasks.json")
     p_run.add_argument("--model",   help="Direct override for the internal model slug")

@@ -1,15 +1,8 @@
 window.MMOI_ANALYTICS = {
   "_meta": {
     "schema": 2,
-    "generated_at": "2026-06-23T09:02:01Z",
-    "source_files": {
-      "tasks": "tasks/active_tasks.json",
-      "ptme_decisions": "logs/ptme_decisions.jsonl",
-      "activity": "dashboard/agent_activity.json",
-      "live_tasks": "dashboard/live_tasks.json",
-      "lessons": "BKM/AGENT_LESSONS.md",
-      "usage_logs": []
-    }
+    "generated_at": null,
+    "source_files": {}
   },
   "sources": {
     "tasks_total": 0,
@@ -17,7 +10,7 @@ window.MMOI_ANALYTICS = {
     "task_complexity_counts": {},
     "tasks_with_complexity": 0,
     "tasks_missing_complexity": 0,
-    "activity_entries": 14,
+    "activity_entries": 0,
     "running_agents": 0,
     "live_task_count": 0,
     "ptme_decision_count": 0,
@@ -34,7 +27,7 @@ window.MMOI_ANALYTICS = {
     "rows": []
   },
   "decisions": {
-    "empty_state": "no PTME decisions logged yet",
+    "empty_state": "no routing decisions logged yet",
     "rows": [],
     "summary": {
       "logged_count": 0,
@@ -53,8 +46,8 @@ window.MMOI_ANALYTICS = {
     "last_updated": null,
     "recent_sections": [],
     "recent_lessons": [],
-    "decision_logging_status": "no PTME decisions logged yet",
-    "qa_rounds": "metric pending — needs more logged runs",
-    "rework_trend": "metric pending — needs more logged runs"
+    "decision_logging_status": "no routing decisions logged yet",
+    "qa_rounds": "metric pending",
+    "rework_trend": "metric pending"
   }
 };

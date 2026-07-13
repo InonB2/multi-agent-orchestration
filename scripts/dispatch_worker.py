@@ -11,13 +11,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import agent_activity
 import codex_usage
 import ptme
+import sidecar_lock
 
 try:  # Phase 3/4 intelligence layer — optional, guarded.
     import learning_loop
@@ -137,6 +137,21 @@ def canonical_worker_id(engine: str, worker_id: str | None, role: str | None) ->
     raise ValueError("worker_id or role is required")
 
 
+def parse_artifact_links(val: list[dict] | str | None) -> list[dict]:
+    if not val:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        try:
+            res = json.loads(val)
+            if isinstance(res, list):
+                return res
+        except Exception:
+            pass
+    return []
+
+
 def seed_live_tasks_data(timestamp: str | None = None) -> dict:
     ts = timestamp or now_iso()
     return {
@@ -144,6 +159,8 @@ def seed_live_tasks_data(timestamp: str | None = None) -> dict:
             "schema": 1,
             "note": "Live tasks recorded by scripts/dispatch_worker.py for file:// dashboard rendering.",
             "updated_at": ts,
+            "generator": "scripts/dispatch_worker.py",
+            "version": "2.0.0",
         },
         "entries": [],
     }
@@ -160,6 +177,11 @@ def write_live_tasks(payload: dict, path: Path = LIVE_TASKS_FILE) -> None:
     )
     js_path = LIVE_TASKS_JS_FILE if path == LIVE_TASKS_FILE else path.with_suffix(".js")
     agent_activity.atomic_write_text(js_path, live_tasks_js_source(payload))
+
+
+def _write_ptme_rows(rows: list[dict], path: Path) -> None:
+    text = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n"
+    agent_activity.atomic_write_text(path, text)
 
 
 def read_live_tasks(path: Path = LIVE_TASKS_FILE) -> dict:
@@ -196,12 +218,21 @@ def find_live_task(payload: dict, worker_id: str, task_id: str) -> dict:
         "model": None,
         "effort": None,
         "started_at": None,
+        "spawned_at": None,
         "updated_at": None,
         "completed_at": None,
         "finished_at": None,
+        "ended_at": None,
         "decision_ref": None,
         "usage": None,
         "duration_seconds": None,
+        "duration_sec": None,
+        "plan_id": None,
+        "planned_tokens": None,
+        "actual_tokens": None,
+        "qa_tester": None,
+        "qa_verdict": None,
+        "artifact_links": [],
     }
     entries.append(entry)
     return entry
@@ -250,45 +281,75 @@ def expire_stale_live_tasks(payload: dict, now: str | None = None) -> int:
         entry["stale"] = True
         entry["completed_at"] = entry.get("completed_at") or now
         entry["finished_at"] = entry.get("finished_at") or entry.get("completed_at") or now
+        entry["ended_at"] = entry.get("ended_at") or entry.get("finished_at") or now
         entry["updated_at"] = now
+        if entry.get("spawned_at") is None:
+            entry["spawned_at"] = entry.get("started_at")
         if entry.get("duration_seconds") is None:
-            entry["duration_seconds"] = duration_seconds(entry.get("started_at"), now)
+            entry["duration_seconds"] = duration_seconds(
+                entry.get("started_at") or entry.get("spawned_at"), now
+            )
+        entry["duration_sec"] = entry.get("duration_seconds")
         reason = (
             "stale: worker no longer running"
             if not running_now
             else "stale: exceeded {}h".format(STALE_RUNNING_HOURS)
         )
         entry["reason"] = (entry.get("reason") or "") + (" | " if entry.get("reason") else "") + reason
+        if "plan_id" not in entry:
+            entry["plan_id"] = None
+        if "planned_tokens" not in entry:
+            entry["planned_tokens"] = None
+        if "actual_tokens" not in entry:
+            entry["actual_tokens"] = None
+        if "qa_tester" not in entry:
+            entry["qa_tester"] = entry.get("tester_name") or entry.get("tester_role")
+        if "qa_verdict" not in entry:
+            entry["qa_verdict"] = None
+        if "artifact_links" not in entry:
+            entry["artifact_links"] = []
         expired += 1
+    meta = payload.setdefault("_meta", {})
+    meta["updated_at"] = now
+    meta["generator"] = "scripts/dispatch_worker.py"
+    meta["version"] = "2.0.0"
     return expired
 
 
 def annotate_ptme_decision(task_id: str, ts: str, updates: dict) -> None:
-    rows = ptme._load_records(PTME_LOG_FILE)
-    changed = False
-    for row in reversed(rows):
-        if row.get("task_id") == task_id and row.get("ts") == ts:
-            row.update(updates)
-            changed = True
-            break
-    if not changed:
-        return
-    text = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n"
-    agent_activity.atomic_write_text(PTME_LOG_FILE, text)
+    def mutate(rows: list[dict]) -> list[dict] | None:
+        for row in reversed(rows):
+            if row.get("task_id") == task_id and row.get("ts") == ts:
+                row.update(updates)
+                return rows
+        return None
+
+    sidecar_lock.locked_update(
+        PTME_LOG_FILE,
+        mutate,
+        load_fn=ptme._load_records,
+        save_fn=_write_ptme_rows,
+    )
 
 
 def _annotate_latest_ptme_for_task(task_id: str, updates: dict) -> None:
     """Fallback when no decision_ref ts is known: update the latest row."""
-    rows = ptme._load_records(PTME_LOG_FILE)
-    target = None
-    for row in rows:
-        if row.get("task_id") == task_id:
-            target = row  # keep last
-    if target is None:
-        return
-    target.update(updates)
-    text = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n"
-    agent_activity.atomic_write_text(PTME_LOG_FILE, text)
+    def mutate(rows: list[dict]) -> list[dict] | None:
+        target = None
+        for row in rows:
+            if row.get("task_id") == task_id:
+                target = row
+        if target is None:
+            return None
+        target.update(updates)
+        return rows
+
+    sidecar_lock.locked_update(
+        PTME_LOG_FILE,
+        mutate,
+        load_fn=ptme._load_records,
+        save_fn=_write_ptme_rows,
+    )
 
 
 def _latest_ptme_record_for_task(task_id: str) -> dict | None:
@@ -301,20 +362,27 @@ def _latest_ptme_record_for_task(task_id: str) -> dict | None:
 
 
 def annotate_activity_entry(agent_id: str, updates: dict) -> dict:
-    payload = agent_activity.read_activity(agent_activity.ACTIVITY_FILE)
-    entry = agent_activity.find_entry(payload, agent_id)
-    entry.update(updates)
-    agent_activity.write_activity(payload, agent_activity.ACTIVITY_FILE)
-    return entry
+    result: dict = {}
+
+    def mutate(payload: dict) -> dict:
+        nonlocal result
+        entry = agent_activity.find_entry(payload, agent_id)
+        entry.update(updates)
+        result = dict(entry)
+        return payload
+
+    sidecar_lock.locked_update(
+        agent_activity.ACTIVITY_FILE,
+        mutate,
+        load_fn=agent_activity.read_activity,
+        save_fn=agent_activity.write_activity,
+    )
+    return result
 
 
 def append_usage_log(record: dict, path: Path | None = None) -> None:
     path = path or USAGE_LOG_FILE
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
+    sidecar_lock.append_jsonl_record(path, record)
 
 
 def resolve_usage(
@@ -421,6 +489,9 @@ def start(
     override_model: str | None = None,
     override_effort: str | None = None,
     decided_by: str = "local_orchestrator",
+    plan_id: str | None = None,
+    planned_tokens: int | None = None,
+    artifact_links: list[dict] | str | None = None,
 ) -> dict:
     # engine == "auto" means: no engine was forced -> consult the router.
     route_result = None
@@ -461,6 +532,9 @@ def start(
     )
     assigned_name = decision.get("assigned_name")
     specialization = decision.get("specialization")
+    p_tokens = planned_tokens if planned_tokens is not None else decision.get("planned_tokens")
+    qa_tester_val = decision.get("tester_name") or decision.get("tester_role")
+    arts = parse_artifact_links(artifact_links) if artifact_links else []
     activity_entry = annotate_activity_entry(
         worker_id,
         {
@@ -468,49 +542,81 @@ def start(
             "role": role,
             "assigned_name": assigned_name,
             "specialization": specialization,
+            "plan_id": plan_id,
+            "ended_at": None,
+            "duration_sec": None,
+            "planned_tokens": p_tokens,
+            "actual_tokens": None,
+            "qa_tester": qa_tester_val,
+            "qa_verdict": None,
+            "artifact_links": arts,
         },
     )
+    result: dict = {}
 
-    payload = read_live_tasks(LIVE_TASKS_FILE)
-    started_at = activity_entry.get("started_at") or now_iso()
-    updated_at = activity_entry.get("updated_at") or now_iso()
-    entry = find_live_task(payload, worker_id=worker_id, task_id=task_id)
-    entry.update(
-        {
-            "task_id": task_id,
-            "worker_id": worker_id,
-            "worker": worker_id,
-            "engine": engine,
-            "role": role,
-            "assigned_name": assigned_name,
-            "specialization": specialization,
-            "tester_role": decision.get("tester_role"),
-            "tester_name": decision.get("tester_name"),
-            "status": "running",
-            "task_text": task_text,
-            "model": decision["decided_model"],
-            "effort": decision["decided_effort"],
-            "recommended_model": decision.get("recommended_model"),
-            "recommended_effort": decision.get("recommended_effort"),
-            "planned_tokens": decision.get("planned_tokens"),
-            "decided_by": decision.get("decided_by"),
-            "started_at": started_at,
-            "updated_at": updated_at,
-            "completed_at": None,
-            "finished_at": None,
-            "decision_ref": decision_ref,
-            "reason": decision.get("reason") or "",
-            "duration_seconds": None,
-            "usage": None,
-            "stale": False,
-        }
+    def mutate_live_tasks(payload: dict) -> dict:
+        nonlocal result
+        started_at = activity_entry.get("started_at") or now_iso()
+        updated_at = activity_entry.get("updated_at") or now_iso()
+        entry = find_live_task(payload, worker_id=worker_id, task_id=task_id)
+        p_tokens = planned_tokens if planned_tokens is not None else decision.get("planned_tokens")
+        qa_tester_val = decision.get("tester_name") or decision.get("tester_role")
+        arts = parse_artifact_links(artifact_links) if artifact_links else (entry.get("artifact_links") or [])
+
+        entry.update(
+            {
+                "task_id": task_id,
+                "worker_id": worker_id,
+                "worker": worker_id,
+                "engine": engine,
+                "role": role,
+                "assigned_name": assigned_name,
+                "specialization": specialization,
+                "tester_role": decision.get("tester_role"),
+                "tester_name": decision.get("tester_name"),
+                "status": "running",
+                "task_text": task_text,
+                "model": decision["decided_model"],
+                "effort": decision["decided_effort"],
+                "recommended_model": decision.get("recommended_model"),
+                "recommended_effort": decision.get("recommended_effort"),
+                "plan_id": plan_id or entry.get("plan_id"),
+                "spawned_at": started_at,
+                "started_at": started_at,
+                "updated_at": updated_at,
+                "completed_at": None,
+                "finished_at": None,
+                "ended_at": None,
+                "decision_ref": decision_ref,
+                "reason": decision.get("reason") or "",
+                "duration_seconds": None,
+                "duration_sec": None,
+                "planned_tokens": p_tokens,
+                "actual_tokens": None,
+                "qa_tester": qa_tester_val or entry.get("qa_tester"),
+                "qa_verdict": None,
+                "artifact_links": arts,
+                "usage": None,
+                "stale": False,
+            }
+        )
+        # Close any OTHER phantom running records (the just-started one is protected
+        # because its worker was set running in agent_activity above).
+        expire_stale_live_tasks(payload, now=updated_at)
+        meta = payload.setdefault("_meta", {})
+        meta["updated_at"] = entry["updated_at"]
+        meta["generator"] = "scripts/dispatch_worker.py"
+        meta["version"] = "2.0.0"
+        result = dict(entry)
+        return payload
+
+    sidecar_lock.locked_update(
+        LIVE_TASKS_FILE,
+        mutate_live_tasks,
+        load_fn=read_live_tasks,
+        save_fn=write_live_tasks,
     )
-    # Close any OTHER phantom running records (the just-started one is protected
-    # because its worker was set running in agent_activity above).
-    expire_stale_live_tasks(payload, now=updated_at)
-    payload["_meta"]["updated_at"] = entry["updated_at"]
-    write_live_tasks(payload, LIVE_TASKS_FILE)
-    return entry
+    return result
 
 
 def complete(
@@ -524,50 +630,100 @@ def complete(
     qa_finding: str | None = None,
     qa_tester: str | None = None,
     qa_severity: str | None = None,
+    plan_id: str | None = None,
+    artifact_links: list[dict] | str | None = None,
 ) -> dict:
-    payload = read_live_tasks(LIVE_TASKS_FILE)
-    entry = find_live_task(payload, worker_id=worker_id, task_id=task_id)
     completed_at = now_iso()
-    started_at = entry.get("started_at")
-    engine = entry.get("engine") or ("codex" if str(worker_id).startswith("codex") else None)
-    role = entry.get("role") or infer_role(worker_id, engine=engine)
-    usage_tokens, duration_ms, window_pct = resolve_usage(engine or "", usage_tokens, duration_ms, window_pct)
-    elapsed_seconds = duration_seconds_from_ms(duration_ms)
-    if elapsed_seconds is None:
-        elapsed_seconds = duration_seconds(started_at, completed_at)
+    result: dict = {}
+    resolved: dict = {}
 
-    usage: dict | None = None
-    if elapsed_seconds is not None:
-        usage = {
-            "duration_seconds": elapsed_seconds,
-            "label": format_duration_label(elapsed_seconds),
-        }
-    if duration_ms is not None:
-        usage = usage or {}
-        usage["duration_ms"] = int(duration_ms)
-    if usage_tokens is not None:
-        usage = usage or {}
-        usage["tokens_used"] = int(usage_tokens)
-        usage["label"] = "{:,} tokens".format(int(usage_tokens))
-    if window_pct is not None:
-        usage = usage or {}
-        usage["window_pct"] = float(window_pct)
+    def mutate_live_tasks(payload: dict) -> dict:
+        nonlocal result
+        entry = find_live_task(payload, worker_id=worker_id, task_id=task_id)
+        started_at = entry.get("started_at") or entry.get("spawned_at")
+        engine = entry.get("engine") or ("codex" if str(worker_id).startswith("codex") else None)
+        role = entry.get("role") or infer_role(worker_id, engine=engine)
+        actual_tokens, actual_duration_ms, actual_window_pct = resolve_usage(
+            engine or "", usage_tokens, duration_ms, window_pct
+        )
+        elapsed_seconds = duration_seconds_from_ms(actual_duration_ms)
+        if elapsed_seconds is None:
+            elapsed_seconds = duration_seconds(started_at, completed_at)
 
-    entry["status"] = status
-    entry["worker"] = worker_id
-    entry["worker_id"] = worker_id
-    entry["engine"] = engine
-    entry["completed_at"] = completed_at
-    entry["finished_at"] = completed_at
-    entry["updated_at"] = completed_at
-    entry["duration_seconds"] = elapsed_seconds
-    entry["usage"] = usage
-    entry["role"] = role
-    entry["stale"] = False
-    # Sweep sibling phantom running records (this one is already done above).
-    expire_stale_live_tasks(payload, now=completed_at)
-    payload["_meta"]["updated_at"] = completed_at
-    write_live_tasks(payload, LIVE_TASKS_FILE)
+        arts = parse_artifact_links(artifact_links) if artifact_links else (entry.get("artifact_links") or [])
+        final_qa_tester = qa_tester or entry.get("qa_tester") or entry.get("tester_name") or entry.get("tester_role")
+        final_qa_verdict = qa_verdict or entry.get("qa_verdict")
+        final_plan_id = plan_id or entry.get("plan_id")
+
+        usage: dict | None = None
+        if elapsed_seconds is not None:
+            usage = {
+                "duration_seconds": elapsed_seconds,
+                "label": format_duration_label(elapsed_seconds),
+            }
+        if actual_duration_ms is not None:
+            usage = usage or {}
+            usage["duration_ms"] = int(actual_duration_ms)
+        if actual_tokens is not None:
+            usage = usage or {}
+            usage["tokens_used"] = int(actual_tokens)
+            usage["label"] = "{:,} tokens".format(int(actual_tokens))
+        if actual_window_pct is not None:
+            usage = usage or {}
+            usage["window_pct"] = float(actual_window_pct)
+
+        entry["status"] = status
+        entry["worker"] = worker_id
+        entry["worker_id"] = worker_id
+        entry["engine"] = engine
+        entry["completed_at"] = completed_at
+        entry["finished_at"] = completed_at
+        entry["ended_at"] = completed_at
+        entry["updated_at"] = completed_at
+        entry["duration_seconds"] = elapsed_seconds
+        entry["duration_sec"] = elapsed_seconds
+        entry["usage"] = usage
+        entry["role"] = role
+        entry["stale"] = False
+        entry["plan_id"] = final_plan_id
+        entry["spawned_at"] = started_at
+        entry["actual_tokens"] = actual_tokens
+        entry["qa_tester"] = final_qa_tester
+        entry["qa_verdict"] = final_qa_verdict
+        entry["artifact_links"] = arts
+        if entry.get("planned_tokens") is None:
+            entry["planned_tokens"] = None
+
+        # Sweep sibling phantom running records (this one is already done above).
+        expire_stale_live_tasks(payload, now=completed_at)
+        meta = payload.setdefault("_meta", {})
+        meta["updated_at"] = completed_at
+        meta["generator"] = "scripts/dispatch_worker.py"
+        meta["version"] = "2.0.0"
+        resolved.update(
+            {
+                "engine": engine,
+                "role": role,
+                "usage_tokens": actual_tokens,
+                "duration_ms": actual_duration_ms,
+                "window_pct": actual_window_pct,
+            }
+        )
+        result = dict(entry)
+        return payload
+
+    sidecar_lock.locked_update(
+        LIVE_TASKS_FILE,
+        mutate_live_tasks,
+        load_fn=read_live_tasks,
+        save_fn=write_live_tasks,
+    )
+    entry = result
+    engine = resolved.get("engine")
+    role = resolved.get("role")
+    usage_tokens = resolved.get("usage_tokens")
+    duration_ms = resolved.get("duration_ms")
+    window_pct = resolved.get("window_pct")
 
     # Back-annotate the SAME ptme decision record with finished_at + ACTUALS so
     # planned-vs-actual is visible. decision_ref is "task_id@ts"; fall back to
@@ -620,6 +776,12 @@ def complete(
             final_record = _latest_ptme_record_for_task(task_id)
             if final_record:
                 learning_loop.record_outcome_from_decision(final_record)
+                if qa_verdict is not None:
+                    learning_loop.annotate_outcome(
+                        task_id=task_id,
+                        qa_verdict=qa_verdict,
+                        actual_tokens=usage_tokens,
+                    )
         except Exception:
             pass
 
@@ -671,6 +833,9 @@ def cmd_start(args: argparse.Namespace) -> int:
         override_model=args.override_model,
         override_effort=args.override_effort,
         decided_by=args.by,
+        plan_id=args.plan_id,
+        planned_tokens=args.planned_tokens,
+        artifact_links=args.artifact_links,
     )
     print(json.dumps(entry, indent=2, ensure_ascii=False))
     return 0
@@ -688,6 +853,8 @@ def cmd_complete(args: argparse.Namespace) -> int:
         qa_finding=args.qa_finding,
         qa_tester=args.qa_tester,
         qa_severity=args.qa_severity,
+        plan_id=args.plan_id,
+        artifact_links=args.artifact_links,
     )
     print(json.dumps(entry, indent=2, ensure_ascii=False))
     return 0
@@ -713,6 +880,9 @@ def build_parser() -> argparse.ArgumentParser:
     start_parser.add_argument("--override-model")
     start_parser.add_argument("--override-effort")
     start_parser.add_argument("--by", default="local_orchestrator")
+    start_parser.add_argument("--plan-id", help="Originating plan ID")
+    start_parser.add_argument("--planned-tokens", type=int, help="Budgeted token count")
+    start_parser.add_argument("--artifact-links", help="JSON array of artifact link dicts")
     start_parser.set_defaults(func=cmd_start)
 
     complete_parser = subparsers.add_parser("complete", help="Record worker completion")
@@ -725,10 +895,12 @@ def build_parser() -> argparse.ArgumentParser:
     complete_parser.add_argument("--qa-verdict", help="QA/security verdict to stamp (pass/fail)")
     complete_parser.add_argument(
         "--qa-finding",
-        help="QA/security finding → written as a lesson to the worker's profile",
+        help="QA/security finding written as a lesson to the worker's profile",
     )
     complete_parser.add_argument("--qa-tester", help="The tester id (must differ from --worker)")
     complete_parser.add_argument("--qa-severity", help="Optional finding severity (low/med/high)")
+    complete_parser.add_argument("--plan-id", help="Originating plan ID")
+    complete_parser.add_argument("--artifact-links", help="JSON array of artifact link dicts")
     complete_parser.set_defaults(func=cmd_complete)
 
     return parser

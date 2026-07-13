@@ -19,30 +19,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import sidecar_lock
+
 ROOT = Path(__file__).resolve().parent.parent
 ACTIVITY_FILE = ROOT / "dashboard" / "agent_activity.json"
 ACTIVITY_JS_FILE = ROOT / "dashboard" / "agent_activity.js"
 
-# Generic seed roster — role-based placeholder ids so the dashboard renders
-# out-of-the-box. Replace/extend with your own orchestrator + engine worker
-# ids. The producer scripts and dashboard key off the engine prefix
-# (claude- / agy- / codex-) and the role suffix, not these specific names.
-SEED_AGENT_IDS = [
-    "root",  # top orchestrator (rename to your own orchestrator id)
-    "claude-orchestrator",
-    "claude-researcher",
-    "claude-coder",
-    "claude-qa",
-    "claude-security",
-    "agy",
-    "agy-researcher",
-    "agy-coder",
-    "agy-qa",
-    "codex",
-    "codex-coder",
-    "codex-qa",
-    "codex-security",
-]
+ENGINES = ("claude", "codex", "agy")
+ROLES = ("orchestrator", "coder", "qa", "researcher", "designer", "security", "web", "content", "data")
+SEED_AGENT_IDS = [f"{engine}-{role}" for engine in ENGINES for role in ROLES]
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -59,15 +44,24 @@ def idle_entry(agent: str, updated_at: str | None = None) -> dict:
     return {
         "agent": agent,
         "task_id": None,
+        "plan_id": None,
         "model": None,
         "effort": None,
         "current_task": None,
         "status": "idle",
         "started_at": None,
+        "spawned_at": None,
+        "ended_at": None,
+        "duration_sec": None,
         "updated_at": updated_at,
         "reason": "",
         "session_usage_pct": 0,
         "usage": None,
+        "planned_tokens": None,
+        "actual_tokens": None,
+        "qa_tester": None,
+        "qa_verdict": None,
+        "artifact_links": [],
     }
 
 
@@ -78,6 +72,8 @@ def seed_activity_data(timestamp: str | None = None) -> dict:
             "schema": 1,
             "note": "Live agent activity overlay. Idle entries fall back to dashboard/agent_status.js seed data.",
             "updated_at": ts,
+            "generator": "scripts/agent_activity.py",
+            "version": "2.0.0",
         },
         "entries": [idle_entry(agent, updated_at=ts) for agent in SEED_AGENT_IDS],
     }
@@ -106,17 +102,34 @@ def atomic_write_text(path: Path, text: str) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")  # unique per target: .json.tmp / .js.tmp
-    tmp.write_text(text, encoding="utf-8")
+    # The tmp write itself can hit a Windows sharing violation too (AV/indexer
+    # briefly holding the previous cycle's tmp) — retry it like the rename below.
+    for attempt in range(5):
+        try:
+            tmp.write_text(text, encoding="utf-8")
+            break
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.2 * (attempt + 1))
     for attempt in range(5):
         try:
             os.replace(tmp, path)
             return
         except PermissionError:
             time.sleep(0.2 * (attempt + 1))
-    # Destination locked against rename — overwrite in place as a fallback.
+    # Destination locked against rename — overwrite in place as a fallback
+    # (same brief-retry discipline: AV scans can hold the file for a moment).
     try:
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(text)
+        for attempt in range(5):
+            try:
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(text)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.2 * (attempt + 1))
     finally:
         try:
             tmp.unlink()
@@ -161,15 +174,24 @@ def find_entry(payload: dict, agent: str) -> dict:
 
 def reset_entry(entry: dict, timestamp: str, reason: str = "") -> None:
     entry["task_id"] = None
+    entry["plan_id"] = None
     entry["model"] = None
     entry["effort"] = None
     entry["current_task"] = None
     entry["status"] = "idle"
     entry["started_at"] = None
+    entry["spawned_at"] = None
+    entry["ended_at"] = None
+    entry["duration_sec"] = None
     entry["updated_at"] = timestamp
     entry["reason"] = reason
     entry["session_usage_pct"] = int(entry.get("session_usage_pct") or 0)
     entry["usage"] = None
+    entry["planned_tokens"] = None
+    entry["actual_tokens"] = None
+    entry["qa_tester"] = None
+    entry["qa_verdict"] = None
+    entry["artifact_links"] = []
 
 
 def set(
@@ -184,40 +206,161 @@ def set(
     path: Path | None = None,
 ) -> dict:
     path = path or ACTIVITY_FILE
-    payload = read_activity(path)
-    timestamp = now_iso()
-    entry = find_entry(payload, agent)
+    result: dict = {}
 
-    if status == "idle":
-        reset_entry(entry, timestamp, reason=reason or "")
-    else:
-        previous_started_at = entry.get("started_at")
-        previous_status = entry.get("status")
-        entry["task_id"] = task_id
-        entry["model"] = model
-        entry["effort"] = effort
-        entry["current_task"] = task
-        entry["status"] = "running"
-        entry["started_at"] = previous_started_at if previous_status == "running" and previous_started_at else timestamp
-        entry["updated_at"] = timestamp
-        entry["reason"] = reason or ""
-        entry["session_usage_pct"] = int(entry.get("session_usage_pct") or 0)
-        entry["usage"] = usage
+    def mutate(payload: dict) -> dict:
+        nonlocal result
+        timestamp = now_iso()
+        entry = find_entry(payload, agent)
 
-    payload["_meta"]["updated_at"] = timestamp
-    write_activity(payload, path)
-    return entry
+        if status == "idle":
+            reset_entry(entry, timestamp, reason=reason or "")
+        else:
+            previous_started_at = entry.get("started_at")
+            previous_status = entry.get("status")
+            entry["task_id"] = task_id
+            entry["model"] = model
+            entry["effort"] = effort
+            entry["current_task"] = task
+            entry["status"] = status
+            started = (
+                previous_started_at
+                if previous_status in ("running", "reserved") and previous_started_at
+                else timestamp
+            )
+            entry["started_at"] = started
+            entry["spawned_at"] = started
+            entry["updated_at"] = timestamp
+            entry["reason"] = reason or ""
+            entry["session_usage_pct"] = int(entry.get("session_usage_pct") or 0)
+            entry["usage"] = usage
+            if "actual_tokens" not in entry:
+                entry["actual_tokens"] = None
+
+        meta = payload.setdefault("_meta", {})
+        meta["updated_at"] = timestamp
+        meta["generator"] = "scripts/agent_activity.py"
+        meta["version"] = "2.0.0"
+        result = dict(entry)
+        return payload
+
+    sidecar_lock.locked_update(
+        path,
+        mutate,
+        load_fn=read_activity,
+        save_fn=write_activity,
+    )
+    return result
 
 
 def clear(agent: str, reason: str = "", path: Path | None = None) -> dict:
     path = path or ACTIVITY_FILE
-    payload = read_activity(path)
-    timestamp = now_iso()
-    entry = find_entry(payload, agent)
-    reset_entry(entry, timestamp, reason=reason)
-    payload["_meta"]["updated_at"] = timestamp
-    write_activity(payload, path)
-    return entry
+    result: dict = {}
+
+    def mutate(payload: dict) -> dict:
+        nonlocal result
+        timestamp = now_iso()
+        entry = find_entry(payload, agent)
+        reset_entry(entry, timestamp, reason=reason)
+        payload.setdefault("_meta", {})["updated_at"] = timestamp
+        result = dict(entry)
+        return payload
+
+    sidecar_lock.locked_update(
+        path,
+        mutate,
+        load_fn=read_activity,
+        save_fn=write_activity,
+    )
+    return result
+
+
+def claim_slot(
+    engine: str,
+    explicit_role: str | None = None,
+    task_id: str | None = None,
+    engine_cap: int = 3,
+    path: Path | None = None,
+) -> tuple[str, dict]:
+    path = path or ACTIVITY_FILE
+    claimed_role: str | None = None
+    claimed_entry: dict = {}
+
+    def mutate(payload: dict) -> dict:
+        nonlocal claimed_role, claimed_entry
+        timestamp = now_iso()
+
+        if explicit_role:
+            agent = f"{engine}-{explicit_role}"
+            entry = find_entry(payload, agent)
+            current_status = entry.get("status")
+            if current_status in ("running", "reserved"):
+                raise ValueError(
+                    f"Telemetry slot '{agent}' is currently occupied ({current_status})"
+                )
+            entry["task_id"] = task_id
+            entry["status"] = "reserved"
+            entry["updated_at"] = timestamp
+            entry["reason"] = f"reserved for task {task_id}" if task_id else "reserved"
+            claimed_role = explicit_role
+            claimed_entry = dict(entry)
+        else:
+            found_role = None
+            for i in range(1, engine_cap + 1):
+                role_candidate = f"w{i}"
+                agent = f"{engine}-{role_candidate}"
+                entry = find_entry(payload, agent)
+                current_status = entry.get("status")
+                if current_status not in ("running", "reserved"):
+                    found_role = role_candidate
+                    entry["task_id"] = task_id
+                    entry["status"] = "reserved"
+                    entry["updated_at"] = timestamp
+                    entry["reason"] = f"reserved for task {task_id}" if task_id else "reserved"
+                    claimed_entry = dict(entry)
+                    break
+            if not found_role:
+                raise ValueError(
+                    f"No free telemetry slot available for {engine} (cap={engine_cap})"
+                )
+            claimed_role = found_role
+
+        meta = payload.setdefault("_meta", {})
+        meta["updated_at"] = timestamp
+        meta["generator"] = "scripts/agent_activity.py"
+        meta["version"] = "2.0.0"
+        return payload
+
+    sidecar_lock.locked_update(
+        path,
+        mutate,
+        load_fn=read_activity,
+        save_fn=write_activity,
+    )
+    return claimed_role, claimed_entry
+
+
+def release_slot(agent: str, path: Path | None = None) -> dict:
+    path = path or ACTIVITY_FILE
+    result: dict = {}
+
+    def mutate(payload: dict) -> dict:
+        nonlocal result
+        timestamp = now_iso()
+        entry = find_entry(payload, agent)
+        if entry.get("status") == "reserved":
+            reset_entry(entry, timestamp, reason="released reservation")
+        payload.setdefault("_meta", {})["updated_at"] = timestamp
+        result = dict(entry)
+        return payload
+
+    sidecar_lock.locked_update(
+        path,
+        mutate,
+        load_fn=read_activity,
+        save_fn=write_activity,
+    )
+    return result
 
 
 def cmd_set(args: argparse.Namespace) -> int:

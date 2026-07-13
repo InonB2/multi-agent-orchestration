@@ -30,8 +30,7 @@ Commands:
     python scripts/model_supervisor.py run --model codex [--max-workers N] [--dry-run]
     python scripts/model_supervisor.py select --model codex
 
-Models / concurrency caps (plan §6 — protect CLI subscriptions / TPM limits):
-    codex 3   antigravity/agy 2   claude-code 1
+Models / concurrency caps are read from repository-root aoa.config.json.
 """
 
 from __future__ import annotations
@@ -48,6 +47,7 @@ import llm_provider as lp
 import task_spec as ts
 import worktree_manager as wt
 import worker_wrapper as ww
+from config_loader import load_aoa_config
 
 ROOT          = Path(__file__).resolve().parent.parent
 TASKS_FILE    = ROOT / "tasks" / "active_tasks.json"
@@ -55,11 +55,13 @@ COORDINATOR   = Path(__file__).resolve().parent / "coordinator.py"
 LLM_PROVIDER  = Path(__file__).resolve().parent / "llm_provider.py"
 
 # Concurrency caps per model (plan §6). Falls back to 1 for unknown models.
+_ENGINE_LIMITS = load_aoa_config()["engine_limits"]
 MODEL_CONCURRENCY = {
-    "codex":       3,
-    "antigravity": 2,
-    "agy":         2,
-    "claude-code": 1,
+    "codex": _ENGINE_LIMITS["codex"],
+    "antigravity": _ENGINE_LIMITS["agy"],
+    "agy": _ENGINE_LIMITS["agy"],
+    "claude-code": _ENGINE_LIMITS["claude"],
+    "claude": _ENGINE_LIMITS["claude"],
 }
 
 # Statuses a supervisor is allowed to pick up (everything not yet owned).

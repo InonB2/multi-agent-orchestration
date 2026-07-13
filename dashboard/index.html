@@ -68,7 +68,7 @@
   .lt-worker{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .lt-worker small{color:var(--text-secondary)}
   .lt-status{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
-  .lt-status-running{color:var(--cyan)}.lt-status-done{color:var(--green)}.lt-status-other{color:var(--text-secondary)}
+  .lt-status-running{color:var(--cyan)}.lt-status-done{color:var(--green)}.lt-status-caught{color:var(--yellow)}.lt-status-other{color:var(--text-secondary)}
   .lt-when{font-size:11px;color:var(--text-secondary);text-align:right}
   .lt-trend{justify-self:end;display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
   .lt-trend-run{border:1px solid rgba(56,189,248,0.35);background:rgba(34,211,238,0.12);color:var(--cyan)}
@@ -106,7 +106,7 @@
 <body>
 <div class="wrap">
   <header class="top">
-    <div class="title">MMOI · Agent Orchestration Dashboard<small>Multi-Agent Orchestration Infrastructure — live team-of-teams view</small></div>
+    <div class="title">AOA · Agent Orchestration Dashboard<small>Worker-not-tester quality gates across pluggable engines</small></div>
     <span class="live-pill"><span class="live-dot"></span><span id="clock">--:--:--</span> · <span id="feed-age">feeds loaded</span></span>
   </header>
   <div class="meta-line" id="meta-line">Reading window globals from the feed scripts…</div>
@@ -236,10 +236,10 @@
     entries.sort(function(a,b){ return Date.parse(b.updated_at||0) - Date.parse(a.updated_at||0); });
     var rows = entries.map(function(e){
       var st = String(e.status||'pending').toLowerCase();
-      var stCls = st==='running' ? 'lt-status-running' : (st==='done'?'lt-status-done':'lt-status-other');
+      var stCls = st==='running' ? 'lt-status-running' : (st==='done'?'lt-status-done':(st==='caught'?'lt-status-caught':'lt-status-other'));
       var trendCls = st==='running' ? 'lt-trend lt-trend-run' : (st==='done' ? 'lt-trend lt-trend-done' : 'lt-trend');
       var when = st==='running' ? elapsed(e.started_at, e.updated_at) : ago(e.completed_at||e.updated_at);
-      var model = e.model ? esc(e.model)+(e.effort?' / '+esc(e.effort):'') : '—';
+      var model = e.tester_engine ? esc(e.worker_engine)+' → '+esc(e.tester_engine) : (e.model ? esc(e.model)+(e.effort?' / '+esc(e.effort):'') : '—');
       return '<div class="lt-row'+(st==='running'?' lt-running':'')+'"><div class="lt-head">'
         + '<span class="lt-id">'+esc(e.task_id||'—')+'</span>'
         + '<span class="lt-worker">'+esc(e.worker_id||'—')+' <small>'+model+'</small></span>'

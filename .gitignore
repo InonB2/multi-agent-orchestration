@@ -66,7 +66,9 @@ Thumbs.db
 logs/
 
 # Runtime state
+.aoa/
 tasks/active_tasks.json
+aoa.config.local.json
 tasks/snapshots/
 tasks/queue/resume_queue.json
 scratchpad/

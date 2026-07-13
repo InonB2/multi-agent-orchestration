@@ -229,84 +229,42 @@ def test_list_shows_provider_types(cfg_dir, capsys):
 # ---------------------------------------------------------------------------
 
 def test_run_dry_run_cli_prints_command_no_exec(cfg_dir, monkeypatch, capsys):
-    """run --dry-run for a cli agent prints the CLI command and does NOT call subprocess."""
-    called = []
-
-    def fake_run(cmd, **kwargs):
-        called.append(cmd)
-        return type("R", (), {"stdout": "", "stderr": "", "returncode": 0})()
-
-    monkeypatch.setattr(lp.subprocess, "run", fake_run)
+    """CLI dry-run routes through the golden dispatcher without exposing prompt."""
+    requests = []
+    def fake_dispatch(request, **kwargs):
+        requests.append((request, kwargs))
+        return lp.aoa_dispatch.DispatchResult(request.engine, "dry_run", 0, "<redacted>", "", "", 0)
+    monkeypatch.setattr(lp.aoa_dispatch, "dispatch_request", fake_dispatch)
 
     args = argparse.Namespace(agent="testcli", prompt="do some work", dry_run=True)
     lp.cmd_run(args)
 
     out = capsys.readouterr().out
-    assert "codex" in out
-    assert "do some work" in out
-    assert called == [], "subprocess.run must NOT be called during --dry-run"
+    assert "<redacted>" in out
+    assert "do some work" not in out
+    assert requests[0][1]["dry_run"] is True
 
 
 def test_run_no_dry_run_cli_calls_subprocess(cfg_dir, monkeypatch, capsys):
-    """run (live) for a cli agent must invoke subprocess.run with the CLI command."""
-    invocations = []
-
-    def fake_run(cmd, **kwargs):
-        invocations.append(cmd)
-        return type("R", (), {"stdout": "ok", "stderr": "", "returncode": 0})()
-
-    monkeypatch.setattr(lp.subprocess, "run", fake_run)
-
-    # Wrap sys.exit so the test doesn't abort on returncode 0
-    with pytest.raises(SystemExit) as exc_info:
-        args = argparse.Namespace(agent="testcli", prompt="work", dry_run=False)
-        lp.cmd_run(args)
-
-    assert exc_info.value.code == 0
-    assert invocations, "subprocess.run must be called in live mode"
-    assert invocations[0][0] == "codex"
+    """run (live) delegates through the common dispatch interface."""
+    requests, _ = _capture_run(monkeypatch)
+    lp.cmd_run(argparse.Namespace(agent="testcli", prompt="work", dry_run=False))
+    assert requests[0].engine == "codex"
+    assert requests[0].prompt == "work"
 
 
 def test_run_cli_exec_args_inserted_before_prompt(cfg_dir, monkeypatch, capsys):
-    """cli_exec_args must be inserted between the command and the prompt, so Codex
-    runs as `codex exec "<prompt>"` (non-interactive) rather than the hanging TUI."""
-    invocations = []
-    kwargs_seen = []
-
-    def fake_run(cmd, **kwargs):
-        invocations.append(cmd)
-        kwargs_seen.append(kwargs)
-        return type("R", (), {"stdout": "ok", "stderr": "", "returncode": 0})()
-
-    monkeypatch.setattr(lp.subprocess, "run", fake_run)
-
-    with pytest.raises(SystemExit) as exc_info:
-        args = argparse.Namespace(agent="testexec", prompt="work", dry_run=False)
-        lp.cmd_run(args)
-
-    assert exc_info.value.code == 0
-    assert invocations, "subprocess.run must be called in live mode"
-    # argv must be exactly [cli_cmd, *exec_args, prompt]
-    assert invocations[0] == ["codex", "exec", "work"]
+    """Legacy exec args are retired; the Codex adapter owns safe invocation."""
+    requests, _ = _capture_run(monkeypatch)
+    lp.cmd_run(argparse.Namespace(agent="testexec", prompt="work", dry_run=False))
+    assert requests[0].engine == "codex"
+    assert requests[0].executable == "codex"
 
 
-def test_run_cli_closes_stdin(cfg_dir, monkeypatch):
-    """The CLI runner must close stdin (DEVNULL) so exec-style CLIs don't hang
-    waiting on EOF when launched without a TTY."""
-    kwargs_seen = []
-
-    def fake_run(cmd, **kwargs):
-        kwargs_seen.append(kwargs)
-        return type("R", (), {"stdout": "", "stderr": "", "returncode": 0})()
-
-    monkeypatch.setattr(lp.subprocess, "run", fake_run)
-
-    with pytest.raises(SystemExit):
-        args = argparse.Namespace(agent="testexec", prompt="work", dry_run=False)
-        lp.cmd_run(args)
-
-    assert kwargs_seen, "subprocess.run must be called"
-    assert kwargs_seen[0].get("stdin") == lp.subprocess.DEVNULL
+def test_run_cli_passes_prompt_to_dispatch_contract(cfg_dir, monkeypatch):
+    requests, _ = _capture_run(monkeypatch)
+    lp.cmd_run(argparse.Namespace(agent="testexec", prompt="work", dry_run=False))
+    assert requests[0].prompt == "work"
 
 
 # ---------------------------------------------------------------------------
@@ -565,16 +523,16 @@ def _write_ptme_agents(cfg_dir):
 
 
 def _capture_run(monkeypatch):
-    """Patch subprocess.run to capture argv + kwargs; returns the capture lists."""
-    invocations, kwargs_seen = [], []
+    """Patch the golden dispatcher and capture request + kwargs."""
+    requests, kwargs_seen = [], []
 
-    def fake_run(cmd, **kwargs):
-        invocations.append(cmd)
+    def fake_run(request, **kwargs):
+        requests.append(request)
         kwargs_seen.append(kwargs)
-        return type("R", (), {"stdout": "ok", "stderr": "", "returncode": 0})()
+        return lp.aoa_dispatch.DispatchResult(request.engine, "success", 0, "ok", "ok", "", 0)
 
-    monkeypatch.setattr(lp.subprocess, "run", fake_run)
-    return invocations, kwargs_seen
+    monkeypatch.setattr(lp.aoa_dispatch, "dispatch_request", fake_run)
+    return requests, kwargs_seen
 
 
 # --- Case 6: Absent keys → legacy behavior (bare CLI binary) ----------------
@@ -590,14 +548,9 @@ def test_run_absent_keys_legacy_argv(cfg_dir, monkeypatch):
     _write_ptme_agents(cfg_dir)
     invocations, _ = _capture_run(monkeypatch)
 
-    with pytest.raises(SystemExit) as exc:
-        # Namespace deliberately omits task_id/model/effort/complexity (case 1
-        # backward-compat: getattr must not raise AttributeError).
-        lp.cmd_run(argparse.Namespace(agent="testagy", prompt="work", dry_run=False))
-
-    assert exc.value.code == 0
-    # agy with no model resolved → bare binary + prompt (legacy).
-    assert invocations[0] == ["agy", "work"]
+    lp.cmd_run(argparse.Namespace(agent="testagy", prompt="work", dry_run=False))
+    assert invocations[0].engine == "agy"
+    assert invocations[0].prompt == "work"
 
 
 # --- Case 5: Complexity mapping overrides default ---------------------------
@@ -617,15 +570,10 @@ def test_run_complexity_builds_codex_flags(cfg_dir, monkeypatch):
     _write_ptme_agents(cfg_dir)
     invocations, _ = _capture_run(monkeypatch)
 
-    with pytest.raises(SystemExit) as exc:
-        lp.cmd_run(argparse.Namespace(
-            agent="testcodex", prompt="work", dry_run=False, complexity="L"))
-
-    assert exc.value.code == 0
-    assert invocations[0] == [
-        "codex", "exec", "-m", "gpt-5.5",
-        "-c", 'model_reasoning_effort="high"', "work",
-    ]
+    lp.cmd_run(argparse.Namespace(
+        agent="testcodex", prompt="work", dry_run=False, complexity="L"))
+    assert invocations[0].engine == "codex"
+    assert (invocations[0].model, invocations[0].effort) == ("gpt-5.5", "high")
 
 
 # --- Case 4: Task overrides complexity --------------------------------------
@@ -649,15 +597,11 @@ def test_run_task_override_from_tasks_file(cfg_dir, tmp_path, monkeypatch):
     monkeypatch.setattr(lp, "TASKS_FILE", tasks_file)
 
     invocations, _ = _capture_run(monkeypatch)
-    with pytest.raises(SystemExit):
-        lp.cmd_run(argparse.Namespace(
-            agent="testcodex", prompt="work", dry_run=False, task_id="T-1"))
+    lp.cmd_run(argparse.Namespace(
+        agent="testcodex", prompt="work", dry_run=False, task_id="T-1"))
 
     # Task overrides win over the complexity 'L' mapping (gpt-5.5/high).
-    assert invocations[0] == [
-        "codex", "exec", "-m", "gpt-task",
-        "-c", 'model_reasoning_effort="low"', "work",
-    ]
+    assert (invocations[0].model, invocations[0].effort) == ("gpt-task", "low")
 
 
 # --- Case 3: CLI overrides task ---------------------------------------------
@@ -681,15 +625,11 @@ def test_run_cli_flags_override_tasks_file(cfg_dir, tmp_path, monkeypatch):
     monkeypatch.setattr(lp, "TASKS_FILE", tasks_file)
 
     invocations, _ = _capture_run(monkeypatch)
-    with pytest.raises(SystemExit):
-        lp.cmd_run(argparse.Namespace(
-            agent="testcodex", prompt="work", dry_run=False,
-            task_id="T-1", model="gpt-cli", effort="xhigh", complexity=None))
+    lp.cmd_run(argparse.Namespace(
+        agent="testcodex", prompt="work", dry_run=False,
+        task_id="T-1", model="gpt-cli", effort="xhigh", complexity=None))
 
-    assert invocations[0] == [
-        "codex", "exec", "-m", "gpt-cli",
-        "-c", 'model_reasoning_effort="xhigh"', "work",
-    ]
+    assert (invocations[0].model, invocations[0].effort) == ("gpt-cli", "xhigh")
 
 
 # --- Case 2: cli_cmd consistency across info / list / run -------------------
@@ -707,24 +647,20 @@ def test_cli_cmd_consistent_across_commands(cfg_dir, monkeypatch, capsys):
     assert "agy" in list_out
 
     invocations, _ = _capture_run(monkeypatch)
-    with pytest.raises(SystemExit):
-        lp.cmd_run(argparse.Namespace(
-            agent="testagy", prompt="work", dry_run=False, complexity="L"))
-    assert invocations[0][0] == "agy"
+    lp.cmd_run(argparse.Namespace(
+        agent="testagy", prompt="work", dry_run=False, complexity="L"))
+    assert invocations[0].executable == "agy"
 
 
-def test_agy_run_injects_term_xterm(cfg_dir, monkeypatch):
-    """agy execution must inject TERM=xterm into the subprocess environment."""
+def test_agy_run_routes_common_dispatch(cfg_dir, monkeypatch):
+    """agy execution reaches the common adapter with preflight enabled."""
     _write_ptme_agents(cfg_dir)
-    _, kwargs_seen = _capture_run(monkeypatch)
+    requests, kwargs_seen = _capture_run(monkeypatch)
 
-    with pytest.raises(SystemExit):
-        lp.cmd_run(argparse.Namespace(
-            agent="testagy", prompt="work", dry_run=False, complexity="L"))
-
-    env = kwargs_seen[0].get("env")
-    assert env is not None
-    assert env.get("TERM") == "xterm"
+    lp.cmd_run(argparse.Namespace(
+        agent="testagy", prompt="work", dry_run=False, complexity="L"))
+    assert requests[0].engine == "agy"
+    assert kwargs_seen[0]["preflight"] is True
 
 
 def test_agy_run_no_effort_flag(cfg_dir, monkeypatch):
@@ -732,22 +668,20 @@ def test_agy_run_no_effort_flag(cfg_dir, monkeypatch):
     _write_ptme_agents(cfg_dir)
     invocations, _ = _capture_run(monkeypatch)
 
-    with pytest.raises(SystemExit):
-        lp.cmd_run(argparse.Namespace(
-            agent="testagy", prompt="work", dry_run=False, complexity="L"))
-
-    assert invocations[0] == ["agy", "--model", "gemini-3.1-pro", "--print", "work"]
+    lp.cmd_run(argparse.Namespace(
+        agent="testagy", prompt="work", dry_run=False, complexity="L"))
+    assert invocations[0].model == "gemini-3.1-pro"
+    assert invocations[0].effort == "high"
 
 
 # --- Case 1: backward compat — codex agents get NO env override -------------
 
-def test_codex_run_no_env_override(cfg_dir, monkeypatch):
-    """Non-agy CLI agents must not receive an env kwarg (legacy behavior preserved)."""
+def test_codex_run_routes_common_dispatch(cfg_dir, monkeypatch):
+    """Codex execution reaches the common adapter contract."""
     _write_ptme_agents(cfg_dir)
-    _, kwargs_seen = _capture_run(monkeypatch)
+    requests, kwargs_seen = _capture_run(monkeypatch)
 
-    with pytest.raises(SystemExit):
-        lp.cmd_run(argparse.Namespace(
-            agent="testcodex", prompt="work", dry_run=False, complexity="L"))
-
+    lp.cmd_run(argparse.Namespace(
+        agent="testcodex", prompt="work", dry_run=False, complexity="L"))
+    assert requests[0].engine == "codex"
     assert "env" not in kwargs_seen[0]
