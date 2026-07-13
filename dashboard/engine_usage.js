@@ -1,31 +1,34 @@
-// Sample Engine Usage payload for the static dashboard (no server required).
-// Regenerate from your own environment with scripts/usage_bridge/usage_bridge_reader.py.
-// Every engine block carries an explicit source + confidence label; a CLI that
-// exposes no quota percent reports real token counts instead of a fabricated percent.
 window.ENGINE_USAGE = {
-  "updated_at": "1970-01-01T00:00:00+00:00",
+  "_comment": "Fresh empty engine-usage feed. Regenerate from the installed environment.",
+  "updated_at": null,
   "codex": {
-    "weekly_pct": 0.0,
-    "five_h_pct": 0.0,
+    "weekly_pct": null,
+    "five_h_pct": null,
     "resets": {
       "primary_resets_local": null,
       "weekly_resets_local": null
     },
-    "source": "codex session rollout (local)",
-    "confidence": "real"
+    "source": null,
+    "confidence": "unavailable"
   },
   "agy": {
-    "gemini": { "weekly_pct": 0.0, "weekly_refresh": null, "five_h_pct": 0.0 },
-    "claude_gpt": { "weekly_pct": 0.0, "weekly_refresh": null, "five_h_pct": 0.0 },
-    "source": "agy /usage (pty)",
-    "confidence": "real",
-    "note": "agy runs Gemini and Claude/GPT-OSS on separate quota pools; each is reported independently."
+    "gemini": {
+      "weekly_pct": null,
+      "weekly_refresh": null,
+      "five_h_pct": null
+    },
+    "claude_gpt": {
+      "weekly_pct": null,
+      "weekly_refresh": null,
+      "five_h_pct": null
+    },
+    "source": null,
+    "confidence": "unavailable"
   },
   "claude": {
-    "tokens_7d": 0,
+    "tokens_7d": null,
     "pct": null,
-    "source": "logs/usage.jsonl",
-    "confidence": "real",
-    "note": "real tokens from logged tasks (rolling 7d); the Claude CLI exposes no quota percent, so no percent is shown - wire OTel for a real %"
+    "source": null,
+    "confidence": "unavailable"
   }
 };
