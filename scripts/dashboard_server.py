@@ -25,16 +25,18 @@ class DashboardServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, server_address, handler_class):
+    def __init__(self, server_address, handler_class, dashboard_dir: Path = DASHBOARD_DIR):
         super().__init__(server_address, handler_class)
         self.sync_lock = threading.Lock()
+        self.dashboard_dir = dashboard_dir
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
     server: DashboardServer
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(DASHBOARD_DIR), **kwargs)
+        server = args[2]
+        super().__init__(*args, directory=str(server.dashboard_dir), **kwargs)
 
     def _loopback_host_ok(self) -> bool:
         host = self.headers.get("Host", "").rsplit(":", 1)[0].strip("[]").lower()
@@ -127,12 +129,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Serve the AOA dashboard with live usage sync")
     parser.add_argument("--host", default="127.0.0.1", choices=("127.0.0.1", "::1"))
     parser.add_argument("--port", type=int, default=7780)
+    parser.add_argument("--directory", type=Path, default=DASHBOARD_DIR,
+                        help="Dashboard asset directory (default: packaged dashboard)")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    server = DashboardServer((args.host, args.port), DashboardHandler)
+    dashboard_dir = args.directory.expanduser().resolve()
+    if not (dashboard_dir / "index.html").is_file():
+        print("Dashboard directory is missing index.html: {}".format(dashboard_dir), file=sys.stderr)
+        return 2
+    server = DashboardServer((args.host, args.port), DashboardHandler, dashboard_dir)
     print(f"Dashboard: http://{args.host}:{server.server_port}/")
     try:
         server.serve_forever()

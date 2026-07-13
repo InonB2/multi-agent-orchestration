@@ -85,3 +85,49 @@ def test_probe_agy_uses_print_probe(cfg_dir, monkeypatch):
     assert invocations[0].engine == "agy"
     assert invocations[0].model == "gemini-3.5-flash"
     assert invocations[0].prompt == "health"
+
+
+def test_probe_engine_uses_registered_adapter_contract(monkeypatch, tmp_path):
+    executable = tmp_path / "agent-cli"
+    executable.write_text("fake", encoding="utf-8")
+    config = {
+        "paths": {"workdir": str(tmp_path)},
+        "cli": {"codex": str(executable)},
+        "timeouts": {"health_probe_seconds": 5},
+        "dispatch": {"adapters": {
+            "codex": {"module": "adapters.codex", "cli_key": "codex", "enabled": True}
+        }},
+    }
+    seen = []
+
+    def fake_dispatch(request, **kwargs):
+        seen.append((request, kwargs))
+        return pa.aoa_dispatch.DispatchResult(
+            request.engine, "success", 0, "AOA_CODEX_OK", "", "", 0
+        )
+
+    monkeypatch.setattr(pa.aoa_dispatch, "dispatch_request", fake_dispatch)
+    assert pa.probe_engine("codex", config) is True
+    assert seen[0][0].prompt == "Reply with exactly: AOA_CODEX_OK"
+    assert seen[0][1]["preflight"] is False
+
+
+def test_probe_engine_fails_when_auth_reply_is_wrong(monkeypatch, tmp_path, capsys):
+    executable = tmp_path / "agent-cli"
+    executable.write_text("fake", encoding="utf-8")
+    config = {
+        "paths": {"workdir": str(tmp_path)},
+        "cli": {"codex": str(executable)},
+        "timeouts": {"health_probe_seconds": 5},
+        "dispatch": {"adapters": {
+            "codex": {"module": "adapters.codex", "cli_key": "codex", "enabled": True}
+        }},
+    }
+    monkeypatch.setattr(
+        pa.aoa_dispatch, "dispatch_request",
+        lambda request, **kwargs: pa.aoa_dispatch.DispatchResult(
+            request.engine, "failure", 1, "login required", "", "authentication failed", 0
+        ),
+    )
+    assert pa.probe_engine("codex", config) is False
+    assert "authentication failed" in capsys.readouterr().err

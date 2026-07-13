@@ -23,7 +23,9 @@ def _root() -> Path:
 
 
 def _load_config(root: Path) -> dict:
-    return json.loads((root / "aoa.config.json").read_text(encoding="utf-8"))
+    local = root / "aoa.config.local.json"
+    path = local if local.exists() else root / "aoa.config.json"
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _run_test(path: Path) -> subprocess.CompletedProcess:
@@ -63,8 +65,10 @@ def _dashboard_catch(root: Path, worker: str, tester: str, state: str,
             "completed_at": now,
         }],
     }
-    _write_json_pair(root / "dashboard" / "live_tasks.json",
-                     root / "dashboard" / "live_tasks.js", payload)
+    runtime_dashboard = root / ".aoa" / "dashboard"
+    runtime_dashboard.mkdir(parents=True, exist_ok=True)
+    _write_json_pair(runtime_dashboard / "live_tasks.json",
+                     runtime_dashboard / "live_tasks.js", payload)
 
 
 def _demo_state(root: Path, worker: str) -> tuple[Path, Path]:
@@ -101,6 +105,8 @@ def _dispatch(root: Path, engine: str, prompt_file: Path, project: Path,
     from adapters.base import DispatchRequest
 
     config = _load_config(root)
+    # Demo state belongs in the install-local runtime dashboard, never shipped feeds.
+    config.setdefault("dispatch", {})["dashboard_telemetry"] = False
     timeout = int(config.get("timeouts", {}).get(engine + "_dispatch_seconds", 600))
     request = DispatchRequest(
         engine=engine,
@@ -177,8 +183,8 @@ def run_demo() -> int:
     _dashboard_catch(root, worker, tester, state, evidence)
     print("independent tester: CAUGHT planted Unicode casefold defect")
     print("task state: {} (never advanced to tested/done)".format(state))
-    print("dashboard entry: {}".format(root / "dashboard" / "live_tasks.json"))
-    print("dashboard: file:///{}".format((root / "dashboard" / "index.html").as_posix()))
+    print("dashboard entry: {}".format(root / ".aoa" / "dashboard" / "live_tasks.json"))
+    print("dashboard: http://127.0.0.1:7780/")
     return 0
 
 

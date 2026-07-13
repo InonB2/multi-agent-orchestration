@@ -29,9 +29,8 @@ def test_bundled_visible_and_oracle_transition(tmp_path):
 
 
 def test_dashboard_catch_is_clean_and_records_different_engines(tmp_path):
-    dashboard = tmp_path / "dashboard"
-    dashboard.mkdir()
     cli._dashboard_catch(tmp_path, "worker-a", "tester-b", "in_progress", "oracle failed")
+    dashboard = tmp_path / ".aoa" / "dashboard"
     payload = json.loads((dashboard / "live_tasks.json").read_text(encoding="utf-8"))
     entry = payload["entries"][0]
     assert entry["worker_engine"] == "worker-a"

@@ -31,7 +31,9 @@ This framework solves all four.
 
 ## Requirements
 
-- Python 3.8+ (no external dependencies — stdlib only; Python <3.11 requires `pip install tomli`)
+- Python 3.8+
+- At least two authenticated, registered agent CLIs for the worker-not-tester demo
+- Claude Code, Codex, and AGY are the shipped v1 adapters. Google Gemini CLI is not an AGY substitute and is not claimed as supported.
 - For API providers: set the relevant env var (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`)
 
 ## Installation
@@ -39,8 +41,24 @@ This framework solves all four.
 ```bash
 git clone https://github.com/InonB2/multi-agent-orchestration.git
 cd multi-agent-orchestration
-# No pip install needed — pure Python stdlib
+./install.sh
 ```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/InonB2/multi-agent-orchestration.git
+Set-Location multi-agent-orchestration
+.\install.ps1
+```
+
+The installer checks Python, discovers enabled adapters from `aoa.config.json`,
+runs each selected adapter's live authentication probe sequentially, writes
+machine paths to gitignored `aoa.config.local.json`, seeds the task queue once,
+installs the `aoa` command, and opens the loopback dashboard. It never reads or
+writes credentials. After installation run `aoa demo`; if Python installed its
+scripts outside `PATH`, use the exact `python -m aoa_cli demo` fallback printed
+by the installer.
 
 ## Architecture
 
@@ -162,15 +180,11 @@ Because task execution is coupled to authenticated CLI session states, choosing 
 
 ---
 
-### Task Queue Initialization (Required First Step)
+### Task Queue Initialization
 
-A fresh clone of the repository does not ship with the live task queue file, [active_tasks.json](tasks/active_tasks.json). Running MMOI scripts without this file will result in errors. Before executing any tasks, initialize the task queue by copying the shipped sample file:
-
-```bash
-cp examples/sample_active_tasks.json tasks/active_tasks.json
-```
-
-Alternatively, you can manually create [active_tasks.json](tasks/active_tasks.json) following the structure outlined in [quickstart.md](examples/quickstart.md).
+`install.ps1` and `install.sh` create gitignored `tasks/active_tasks.json` from
+the shipped synthetic example only when the live queue does not already exist.
+Rerunning an installer preserves the user's queue.
 
 ---
 
