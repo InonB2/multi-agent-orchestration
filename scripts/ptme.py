@@ -7,8 +7,9 @@ A task dispatched to engine X is NEVER recommended a model from engine Y. There
 is no cross-engine "default" ladder anymore — every recommendation goes through
 the engine's own ladder, which only points at that engine's model family.
 
-The capability table below is the single source of truth for model choice and
-which family each model belongs to. Recommendation ladders point into it; the
+The capability table in repository-root aoa.config.json is the single source of
+truth for model choice and which family each model belongs to. Recommendation
+ladders point into it; the
 module asserts at import time that each engine ladder only yields models whose
 family matches that engine.
 
@@ -24,85 +25,17 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from config_loader import load_aoa_config
+
 ROOT = Path(__file__).resolve().parent.parent
 LOG_FILE = ROOT / "logs" / "ptme_decisions.jsonl"
 
-# ---------------------------------------------------------------------------
-# Engine / model capability table (TUNABLE — edit model names here only).
-# Each model declares the engine family it belongs to. The ladders below must
-# only reference models whose family equals the ladder's engine; this is
-# enforced by _assert_ladders_engine_scoped() at import time.
-# ---------------------------------------------------------------------------
-CAPABILITY_TABLE = {
-    # --- Claude family ---
-    "claude-haiku-4.5": {
-        "family": "claude",
-        "model_family": "claude",
-        "strengths": ["cheap fast edits", "small docs", "label/copy fixes"],
-        "cost_tier": "low",
-    },
-    "claude-sonnet-4.6": {
-        "family": "claude",
-        "model_family": "claude",
-        "strengths": ["balanced reasoning", "coordination", "documentation"],
-        "cost_tier": "medium",
-    },
-    "claude-opus-4.8": {
-        "family": "claude",
-        "model_family": "claude",
-        "strengths": ["architecture", "security review", "hard design judgment"],
-        "cost_tier": "high",
-    },
-    # --- Codex / GPT family ---
-    "gpt-5.3-codex": {
-        "family": "codex",
-        "model_family": "gpt",
-        "strengths": ["single-file coding", "fast terminal work", "contained refactors"],
-        "cost_tier": "medium",
-    },
-    "gpt-5.5": {
-        "family": "codex",
-        "model_family": "gpt",
-        "strengths": ["heavier repo surgery", "multi-file coding", "complex bugfixes"],
-        "cost_tier": "high",
-    },
-    # --- agy / Gemini family ---
-    "gemini-3.5-flash": {
-        "family": "agy",
-        "model_family": "gemini",
-        "strengths": ["cheap drafting", "fast research bursts", "broad parallel work"],
-        "cost_tier": "low",
-    },
-    "gemini-3.1-pro": {
-        "family": "agy",
-        "model_family": "gemini",
-        "strengths": ["deep research", "long context synthesis", "parallel planning"],
-        "cost_tier": "high",
-    },
-}
-
-# Per-engine recommendation ladders. NOTE: there is intentionally no longer a
-# cross-engine "default" ladder — every engine maps complexity to ITS OWN
-# family only. Effort is the second tuple element.
+# Model capabilities and per-engine ladders are configured in aoa.config.json.
+_AOA_MODELS = load_aoa_config()["models"]
+CAPABILITY_TABLE = _AOA_MODELS["capabilities"]
 ENGINE_LADDERS = {
-    "claude": {
-        "S": ("claude-haiku-4.5", "low"),
-        "M": ("claude-sonnet-4.6", "medium"),
-        "L": ("claude-sonnet-4.6", "high"),
-        "XL": ("claude-opus-4.8", "high"),
-    },
-    "codex": {
-        "S": ("gpt-5.3-codex", "low"),
-        "M": ("gpt-5.3-codex", "medium"),
-        "L": ("gpt-5.5", "high"),
-        "XL": ("gpt-5.5", "high"),
-    },
-    "agy": {
-        "S": ("gemini-3.5-flash", "low"),
-        "M": ("gemini-3.5-flash", "medium"),
-        "L": ("gemini-3.1-pro", "high"),
-        "XL": ("gemini-3.1-pro", "high"),
-    },
+    engine: {complexity: tuple(choice) for complexity, choice in ladder.items()}
+    for engine, ladder in _AOA_MODELS["ladders"].items()
 }
 
 # Backward-compatibility alias: older code imported RECOMMENDATION_LADDERS and

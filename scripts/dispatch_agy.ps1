@@ -21,14 +21,19 @@ param(
     [Parameter(Mandatory = $true)][string]$TaskId,
     [string]$Role = "content",
     [string]$Desc = "agy task",
-    [string]$WorkDir = (Split-Path -Parent $PSScriptRoot),
-    [int]$TimeoutSeconds = 900,
+    [string]$WorkDir = "",
+    [int]$TimeoutSeconds = 0,
     [string]$OutFile,
     [string]$Model = "",
     [switch]$SkipHealth
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "aoa_config.ps1")
+if (-not $WorkDir) { $WorkDir = Get-AoaConfigValue "paths.workdir" }
+if ($TimeoutSeconds -eq 0) { $TimeoutSeconds = [int](Get-AoaConfigValue "timeouts.agy_dispatch_seconds") }
+$HealthTimeoutSeconds = [int](Get-AoaConfigValue "timeouts.health_probe_seconds")
+$PythonCmd = Get-AoaConfigValue "cli.python"
 
 $PtyPy       = Join-Path $PSScriptRoot "agy_pty.py"
 $ResultPy    = Join-Path $PSScriptRoot "agy_result.py"
@@ -54,7 +59,7 @@ $body = $preamble + $body
 
 # ---- health preflight ----
 if (-not $SkipHealth) {
-    $probe = & python $PtyPy --prompt "Reply with exactly: AGY_OK" --timeout 90 2>$null
+    $probe = & $PythonCmd $PtyPy --prompt "Reply with exactly: AGY_OK" --timeout $HealthTimeoutSeconds 2>$null
     if ($LASTEXITCODE -ne 0 -or "$probe" -notmatch "AGY_OK") {
         [Console]::Error.WriteLine("AGY HEALTH FAIL (exit=$LASTEXITCODE, out='$probe'). agy may need re-auth: run 'agy' interactively and log in, or check scripts/agy_pty.py / pywinpty install.")
         exit 2
@@ -63,7 +68,7 @@ if (-not $SkipHealth) {
 
 # ---- telemetry start ----
 $telemetryModel = if ($Model) { $Model } else { "gemini" }
-try { & python $TelemetryPy start --agent $agent --task $TaskId --desc $Desc --model $telemetryModel --role $Role --effort "medium" --reason "agy conpty dispatch" | Out-Null } catch {}
+try { & $PythonCmd $TelemetryPy start --agent $agent --task $TaskId --desc $Desc --model $telemetryModel --role $Role --effort "medium" --reason "agy conpty dispatch" | Out-Null } catch {}
 
 # ---- run via ConPTY ----
 $tmp = Join-Path $env:TEMP ("agyprompt_" + $TaskId + ".txt")
@@ -71,9 +76,9 @@ Set-Content $tmp $body -Encoding UTF8
 $out = ""
 try {
     if ($Model) {
-        $out = & python $PtyPy --prompt-file $tmp --workdir $WorkDir --timeout $TimeoutSeconds --model $Model 2>&1 | Out-String
+        $out = & $PythonCmd $PtyPy --prompt-file $tmp --workdir $WorkDir --timeout $TimeoutSeconds --model $Model 2>&1 | Out-String
     } else {
-        $out = & python $PtyPy --prompt-file $tmp --workdir $WorkDir --timeout $TimeoutSeconds 2>&1 | Out-String
+        $out = & $PythonCmd $PtyPy --prompt-file $tmp --workdir $WorkDir --timeout $TimeoutSeconds 2>&1 | Out-String
     }
     $ptyExit = $LASTEXITCODE
 } finally {
@@ -82,14 +87,14 @@ try {
 
 $timedOut = ($ptyExit -eq 124) -or ($out -match "(?m)^AGY_PTY_ERROR:\s*timeout\s*$")
 $ptyFailed = ($ptyExit -ne 0) -or ($out -match "(?m)^AGY_PTY_ERROR:")
-$status = ($out | & python $ResultPy --exit-code $ptyExit | Out-String).Trim()
-try { & python $TelemetryPy stop --agent $agent --status $status | Out-Null } catch {}
+$status = ($out | & $PythonCmd $ResultPy --exit-code $ptyExit | Out-String).Trim()
+try { & $PythonCmd $TelemetryPy stop --agent $agent --status $status | Out-Null } catch {}
 
 # ---- learning loop: log the outcome so the agent-strength table learns from every dispatch ----
 try {
     $succ = if ($status -eq "done") { 1 } else { 0 }
     $learningLoop = Join-Path $PSScriptRoot "learning_loop.py"
-    if (Test-Path $learningLoop) { & python $learningLoop record --engine agy --role $Role --success $succ --task-id $TaskId 2>$null | Out-Null }
+    if (Test-Path $learningLoop) { & $PythonCmd $learningLoop record --engine agy --role $Role --success $succ --task-id $TaskId 2>$null | Out-Null }
 } catch {}
 
 if ($timedOut) {

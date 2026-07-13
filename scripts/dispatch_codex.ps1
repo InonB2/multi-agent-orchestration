@@ -40,11 +40,11 @@
 param(
     [string]$Prompt,
     [string]$PromptFile,
-    [string]$WorkDir = (Split-Path -Parent $PSScriptRoot),
+    [string]$WorkDir = "",
     [string]$TaskId = "ad-hoc",
     [string]$Role = "qa",
     [string]$Desc = "codex task",
-    [int]$TimeoutSeconds = 600,
+    [int]$TimeoutSeconds = 0,
     [string]$OutFile,
     [ValidateSet('low','medium','high')][string]$Effort = 'medium',
     [switch]$SkipPreflight,
@@ -53,6 +53,15 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "aoa_config.ps1")
+if (-not $WorkDir) { $WorkDir = Get-AoaConfigValue "paths.workdir" }
+if ($TimeoutSeconds -eq 0) { $TimeoutSeconds = [int](Get-AoaConfigValue "timeouts.codex_dispatch_seconds") }
+$CodexCmd = Get-AoaConfigValue "cli.codex"
+$PythonCmd = Get-AoaConfigValue "cli.python"
+if (-not (Get-Command $CodexCmd -ErrorAction SilentlyContinue)) {
+    [Console]::Error.WriteLine("Codex executable not found: $CodexCmd (set AOA_CODEX_CMD)")
+    exit 2
+}
 
 $TelemetryPy = Join-Path $PSScriptRoot "agent_telemetry.py"
 $AgentId = "codex-$Role"
@@ -70,7 +79,7 @@ function Invoke-CodexRaw {
 
     $code = -1
     try {
-        $p = Start-Process -FilePath "codex" -ArgumentList $argList `
+        $p = Start-Process -FilePath $CodexCmd -ArgumentList $argList `
             -RedirectStandardInput $PromptPath `
             -RedirectStandardOutput $so -RedirectStandardError $se `
             -WorkingDirectory $WorkDir -NoNewWindow -PassThru
@@ -117,7 +126,7 @@ function Invoke-CodexRaw {
 if (-not $SkipPreflight) {
     $rateWall = Join-Path $PSScriptRoot "rate_wall_watchdog.py"
     if (Test-Path $rateWall) {
-        $rw = & python $rateWall should-dispatch --engine codex 2>&1
+        $rw = & $PythonCmd $rateWall should-dispatch --engine codex 2>&1
     }
     if ((Test-Path $rateWall) -and $LASTEXITCODE -ne 0) {
         [Console]::Error.WriteLine(@"
@@ -168,7 +177,7 @@ $promptIsTemp = $true
 
 # --- telemetry: mark running (surface failures; stale dashboard is a real signal) ---
 try {
-    & python $TelemetryPy start --agent $AgentId --task $TaskId --desc $Desc --model "gpt-5.4" --role $Role --effort "high" --reason "dispatched" | Out-Null
+    & $PythonCmd $TelemetryPy start --agent $AgentId --task $TaskId --desc $Desc --model "gpt-5.4" --role $Role --effort "high" --reason "dispatched" | Out-Null
     if ($LASTEXITCODE -ne 0) { Write-Host "[dispatch_codex] WARN telemetry start exited $LASTEXITCODE - dashboard may be stale" -ForegroundColor Yellow }
 } catch { Write-Host "[dispatch_codex] WARN telemetry start threw: $_" -ForegroundColor Yellow }
 
@@ -179,7 +188,7 @@ if ($promptIsTemp) { Remove-Item $promptPath -Force -ErrorAction SilentlyContinu
 # --- telemetry: mark idle ---
 $finalStatus = if ($result.ExitCode -eq 0 -and $result.Message) { "done" } else { "failed" }
 try {
-    & python $TelemetryPy stop --agent $AgentId --status $finalStatus | Out-Null
+    & $PythonCmd $TelemetryPy stop --agent $AgentId --status $finalStatus | Out-Null
     if ($LASTEXITCODE -ne 0) { Write-Host "[dispatch_codex] WARN telemetry stop exited $LASTEXITCODE - entry may be stuck running" -ForegroundColor Yellow }
 } catch { Write-Host "[dispatch_codex] WARN telemetry stop threw: $_" -ForegroundColor Yellow }
 
@@ -187,7 +196,7 @@ try {
 try {
     $succ = if ($result.ExitCode -eq 0 -and $result.Message) { 1 } else { 0 }
     $learningLoop = Join-Path $PSScriptRoot "learning_loop.py"
-    if (Test-Path $learningLoop) { & python $learningLoop record --engine codex --role $Role --success $succ --task-id $TaskId 2>$null | Out-Null }
+    if (Test-Path $learningLoop) { & $PythonCmd $learningLoop record --engine codex --role $Role --success $succ --task-id $TaskId 2>$null | Out-Null }
 } catch {}
 
 Write-Host "[dispatch_codex] codex exit $($result.ExitCode), status=$finalStatus" -ForegroundColor ($(if ($finalStatus -eq "done") { "Green" } else { "Yellow" }))

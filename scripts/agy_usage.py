@@ -15,9 +15,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
+from config_loader import load_aoa_config
 
-AGY = os.environ.get("AGY_PATH") or shutil.which("agy") or "agy"
-DEFAULT_WORKDIR = os.getcwd()
+AOA_CONFIG = load_aoa_config()
+AGY = AOA_CONFIG["cli"]["agy"]
+DEFAULT_WORKDIR = AOA_CONFIG["paths"]["workdir"]
+DEFAULT_TIMEOUT = AOA_CONFIG["timeouts"]["agy_usage_seconds"]
 
 
 def _iso_now() -> str:
@@ -134,7 +137,7 @@ def _drive_usage_command(proc, *, accept_with_tab: bool) -> None:
 
 def capture_usage(
     workdir: str = DEFAULT_WORKDIR,
-    timeout: int = 18,
+    timeout: int = DEFAULT_TIMEOUT,
     agy: str = AGY,
 ) -> Dict[str, Any]:
     if not (Path(agy).exists() or shutil.which(agy)):
@@ -214,7 +217,7 @@ def capture_usage(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Capture AGY /usage via ConPTY")
     parser.add_argument("--workdir", default=DEFAULT_WORKDIR)
-    parser.add_argument("--timeout", type=int, default=18)
+    parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
     parser.add_argument("--agy", default=AGY)
     args = parser.parse_args()
     payload = json.dumps(

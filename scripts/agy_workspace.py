@@ -3,10 +3,10 @@
 agy_workspace.py — isolated Antigravity workspaces for true multi-flight dispatch.
 
 Pattern:
-    1. Call provision_workspace("worker-id") to create D:/agy-workers/worker-id/
+    1. Call provision_workspace("worker-id") to create an install-relative workspace
     2. Launch scripts/invoke_agy.ps1 with -WorkspaceDir set to that path
     3. Run many agy workers in parallel because each worker now writes to its
-       own workspace instead of the shared D:/Antigravity playground
+       own workspace instead of a shared machine-specific directory
 """
 
 from __future__ import annotations
@@ -14,7 +14,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-AGY_WORKERS_ROOT = Path("D:/agy-workers")
+from config_loader import load_aoa_config
+
+AGY_WORKERS_ROOT = Path(load_aoa_config()["paths"]["agy_workers"])
 DEFAULT_ROOT = AGY_WORKERS_ROOT
 WORKER_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 DOT_DASH_ONLY_RE = re.compile(r"^[.\-\s]+$")

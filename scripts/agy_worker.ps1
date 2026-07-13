@@ -13,13 +13,20 @@
     Leave it running. Ctrl+C to stop.
 #>
 param(
-    [string]$QueueDir  = (Join-Path (Split-Path -Parent $PSScriptRoot) "tasks\agy_queue"),
-    [string]$ResultDir = (Join-Path (Split-Path -Parent $PSScriptRoot) "tasks\agy_results"),
-    [string]$AgePath   = $(if ($env:AGY_PATH) { $env:AGY_PATH } else { "agy" }),
-    [string]$WorkDir   = (Split-Path -Parent $PSScriptRoot),
-    [int]$PollSeconds  = 4
+    [string]$QueueDir  = "",
+    [string]$ResultDir = "",
+    [string]$AgePath   = "",
+    [string]$WorkDir   = "",
+    [int]$PollSeconds  = 0
 )
 $ErrorActionPreference = "Continue"
+. (Join-Path $PSScriptRoot "aoa_config.ps1")
+if (-not $QueueDir) { $QueueDir = Get-AoaConfigValue "paths.agy_queue" }
+if (-not $ResultDir) { $ResultDir = Get-AoaConfigValue "paths.agy_results" }
+if (-not $AgePath) { $AgePath = Get-AoaConfigValue "cli.agy" }
+if (-not $WorkDir) { $WorkDir = Get-AoaConfigValue "paths.workdir" }
+if ($PollSeconds -eq 0) { $PollSeconds = [int](Get-AoaConfigValue "timeouts.agy_poll_seconds") }
+$PythonCmd = Get-AoaConfigValue "cli.python"
 $env:TERM = "xterm"
 $TelemetryPy = Join-Path $PSScriptRoot "agent_telemetry.py"
 New-Item -ItemType Directory -Force -Path $QueueDir, $ResultDir | Out-Null
@@ -33,7 +40,7 @@ while ($true) {
         $id = $task.id; $role = if ($task.role) { $task.role } else { "content" }
         $agent = "agy-$role"
         Write-Host "[agy_worker] running $id ($($task.desc))" -ForegroundColor Yellow
-        try { & python $TelemetryPy start --agent $agent --task $id --desc $task.desc --model "gemini" --role $role --effort "medium" --reason "agy bridge" | Out-Null } catch {}
+        try { & $PythonCmd $TelemetryPy start --agent $agent --task $id --desc $task.desc --model "gemini" --role $role --effort "medium" --reason "agy bridge" | Out-Null } catch {}
         $wd = if ($task.workdir) { $task.workdir } else { $WorkDir }
         $out = ""
         try {
@@ -43,7 +50,7 @@ while ($true) {
         } catch { $out = "[agy_worker] agy threw: $_" }
         $resultPath = Join-Path $ResultDir ("$id.md")
         Set-Content $resultPath $out -Encoding UTF8
-        try { & python $TelemetryPy stop --agent $agent --status "done" | Out-Null } catch {}
+        try { & $PythonCmd $TelemetryPy stop --agent $agent --status "done" | Out-Null } catch {}
         Remove-Item $j.FullName -Force -ErrorAction SilentlyContinue
         Write-Host "[agy_worker] done $id -> $resultPath ($($out.Length) chars)" -ForegroundColor Green
     }

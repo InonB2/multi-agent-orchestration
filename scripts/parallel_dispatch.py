@@ -15,14 +15,13 @@ from pathlib import Path
 
 import agy_workspace
 import ptme
+from config_loader import load_aoa_config
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_AGY_ROOT = Path("D:/agy-workers")
-DEFAULT_CODEX_ROOT = ROOT / "scratchpad" / "codex-workers"
-ENGINE_LIMITS = {
-    "agy": 3,
-    "codex": 3,
-}
+AOA_CONFIG = load_aoa_config()
+DEFAULT_AGY_ROOT = Path(AOA_CONFIG["paths"]["agy_workers"])
+DEFAULT_CODEX_ROOT = Path(AOA_CONFIG["paths"]["codex_workers"])
+ENGINE_LIMITS = {key: int(value) for key, value in AOA_CONFIG["engine_limits"].items()}
 ENGINE_FAMILIES = {
     "agy": "agy",
     "codex": "codex",
@@ -67,7 +66,7 @@ def assign_workspace(task: dict, agy_root: Path, codex_root: Path) -> Path:
 def build_engine_command(task: dict, workspace: Path) -> list[str]:
     if task["engine"] == "agy":
         return [
-            "powershell",
+            AOA_CONFIG["cli"]["powershell"],
             "-ExecutionPolicy",
             "Bypass",
             "-File",
@@ -79,7 +78,7 @@ def build_engine_command(task: dict, workspace: Path) -> list[str]:
         ]
 
     return [
-        "codex",
+        AOA_CONFIG["cli"]["codex"],
         "exec",
         "--cd",
         str(workspace),

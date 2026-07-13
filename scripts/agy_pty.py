@@ -16,7 +16,12 @@ import shutil
 import sys
 import time
 
-AGY = os.environ.get("AGY_PATH") or shutil.which("agy") or "agy"
+from config_loader import load_aoa_config
+
+AOA_CONFIG = load_aoa_config()
+AGY = AOA_CONFIG["cli"]["agy"]
+DEFAULT_WORKDIR = AOA_CONFIG["paths"]["workdir"]
+DEFAULT_TIMEOUT = AOA_CONFIG["timeouts"]["agy_dispatch_seconds"]
 ERROR_PREFIX = "AGY_PTY_ERROR:"
 
 
@@ -30,13 +35,20 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--prompt")
     ap.add_argument("--prompt-file")
-    ap.add_argument("--workdir", default=os.getcwd())
-    ap.add_argument("--timeout", type=int, default=600)
+    ap.add_argument("--workdir", default=DEFAULT_WORKDIR)
+    ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
     ap.add_argument("--agy", default=AGY)
     ap.add_argument("--model", default=None,
                     help="Force a specific agy model slug (e.g. a Claude/GPT-OSS model, "
                          "not just the Gemini default). Passed through as `--model <slug>`.")
     a = ap.parse_args()
+
+    if not (os.path.isfile(a.agy) or shutil.which(a.agy)):
+        _error(f"agy_executable_not_found:{a.agy}")
+        return 2
+    if a.timeout <= 0:
+        _error("timeout_must_be_positive")
+        return 2
 
     if a.prompt_file:
         with open(a.prompt_file, encoding="utf-8") as f:

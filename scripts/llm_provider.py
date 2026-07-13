@@ -33,6 +33,8 @@ from pathlib import Path
 # QA-1: Import shared utilities from config_loader instead of duplicating them
 import config_loader as cl
 
+AOA_CONFIG = cl.load_aoa_config()
+
 ROOT       = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config" / "agents"
 DEFAULTS   = CONFIG_DIR / "_defaults.toml"
@@ -96,7 +98,8 @@ def _resolve_cli_cmd(config: dict, agent_name: str) -> str:
     binary identically (PTME T-CODE-03).
     """
     provider = config.get("provider", {})
-    return provider.get("cli_cmd") or config.get("agent", {}).get("preferred_model", agent_name)
+    configured = AOA_CONFIG.get("cli", {}).get(agent_name)
+    return configured or provider.get("cli_cmd") or config.get("agent", {}).get("preferred_model", agent_name)
 
 
 def _load_task_overrides(task_id: str):
@@ -481,7 +484,9 @@ def cmd_run(args) -> None:
         max_tokens = int(provider.get("max_tokens", 4096))
 
         # REL-1: read per-provider timeout from TOML, default 60s
-        timeout_seconds = int(provider.get("timeout_seconds", 60))
+        timeout_seconds = int(provider.get(
+            "timeout_seconds", AOA_CONFIG["timeouts"]["api_request_seconds"]
+        ))
 
         if is_anth:
             endpoint = "{}/messages".format(api_base_url.rstrip("/"))

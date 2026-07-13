@@ -508,6 +508,11 @@ This framework is not competing with LangGraph for enterprise workflow orchestra
 
 ## Agent Config
 
+Machine-level paths, CLI commands, timeouts, engine caps, and model ladders use
+[`aoa.config.json`](aoa.config.json) with documented environment overrides; see
+[Portable configuration](docs/configuration.md). Agent TOML files define roles and
+provider behavior and are a separate layer.
+
 Each agent has a TOML file in `config/agents/`. `_defaults.toml` defines base values for all agents; per-agent files override specific keys via deep-merge.
 
 ```toml

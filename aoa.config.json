@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "paths": {
+    "workdir": ".",
+    "agy_workers": "workspaces/agy",
+    "codex_workers": "workspaces/codex",
+    "agy_queue": "tasks/agy_queue",
+    "agy_results": "tasks/agy_results"
+  },
+  "cli": {
+    "python": "python",
+    "powershell": "powershell",
+    "claude": "claude",
+    "codex": "codex",
+    "agy": "agy"
+  },
+  "timeouts": {
+    "codex_dispatch_seconds": 600,
+    "agy_dispatch_seconds": 900,
+    "agy_invoke_seconds": 300,
+    "agy_usage_seconds": 18,
+    "health_probe_seconds": 90,
+    "agy_poll_seconds": 4,
+    "api_request_seconds": 60
+  },
+  "engine_limits": {
+    "claude": 1,
+    "codex": 3,
+    "agy": 3
+  },
+  "models": {
+    "capabilities": {
+      "claude-haiku-4.5": {"family": "claude", "model_family": "claude", "strengths": ["cheap fast edits", "small docs", "label/copy fixes"], "cost_tier": "low"},
+      "claude-sonnet-4.6": {"family": "claude", "model_family": "claude", "strengths": ["balanced reasoning", "coordination", "documentation"], "cost_tier": "medium"},
+      "claude-opus-4.8": {"family": "claude", "model_family": "claude", "strengths": ["architecture", "security review", "hard design judgment"], "cost_tier": "high"},
+      "gpt-5.3-codex": {"family": "codex", "model_family": "gpt", "strengths": ["single-file coding", "fast terminal work", "contained refactors"], "cost_tier": "medium"},
+      "gpt-5.5": {"family": "codex", "model_family": "gpt", "strengths": ["heavier repo surgery", "multi-file coding", "complex bugfixes"], "cost_tier": "high"},
+      "gemini-3.5-flash": {"family": "agy", "model_family": "gemini", "strengths": ["cheap drafting", "fast research bursts", "broad parallel work"], "cost_tier": "low"},
+      "gemini-3.1-pro": {"family": "agy", "model_family": "gemini", "strengths": ["deep research", "long context synthesis", "parallel planning"], "cost_tier": "high"}
+    },
+    "ladders": {
+      "claude": {"S": ["claude-haiku-4.5", "low"], "M": ["claude-sonnet-4.6", "medium"], "L": ["claude-sonnet-4.6", "high"], "XL": ["claude-opus-4.8", "high"]},
+      "codex": {"S": ["gpt-5.3-codex", "low"], "M": ["gpt-5.3-codex", "medium"], "L": ["gpt-5.5", "high"], "XL": ["gpt-5.5", "high"]},
+      "agy": {"S": ["gemini-3.5-flash", "low"], "M": ["gemini-3.5-flash", "medium"], "L": ["gemini-3.1-pro", "high"], "XL": ["gemini-3.1-pro", "high"]}
+    }
+  }
+}

@@ -9,8 +9,8 @@
     misconception that hid real failures. File outputs happen ONLY when the task
     prompt explicitly tells agy to write files AND the Antigravity backend is healthy.
 
-    agy depends on an authenticated Antigravity backend. If that session is expired
-    or the desktop app is closed, agy returns EMPTY output (exit 0) or HANGS. The old
+    agy depends on an authenticated CLI backend. If that session is expired or
+    unavailable, agy returns EMPTY output (exit 0) or HANGS. The old
     wrapper reported that as "No new files detected" - a silent no-op that looked like
     success and wasted dispatches.
 
@@ -38,14 +38,18 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Prompt,
     [int]$WaitSeconds = 30,
-    [int]$TimeoutSeconds = 300,
-    [string]$AgePath = $(if ($env:AGY_PATH) { $env:AGY_PATH } else { "agy" }),
-    [string]$WorkspaceDir = (Split-Path -Parent $PSScriptRoot),
+    [int]$TimeoutSeconds = 0,
+    [string]$AgePath = "",
+    [string]$WorkspaceDir = "",
     [switch]$SkipPreflight
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "aoa_config.ps1")
+if ($TimeoutSeconds -eq 0) { $TimeoutSeconds = [int](Get-AoaConfigValue "timeouts.agy_invoke_seconds") }
+if (-not $AgePath) { $AgePath = Get-AoaConfigValue "cli.agy" }
+if (-not $WorkspaceDir) { $WorkspaceDir = Get-AoaConfigValue "paths.workdir" }
 
 if (-not (Get-Command $AgePath -ErrorAction SilentlyContinue)) { Write-Error "agy executable not found: $AgePath"; exit 1 }
 if (-not (Test-Path $WorkspaceDir)) { Write-Error "Workspace directory not found: $WorkspaceDir"; exit 1 }
@@ -98,8 +102,8 @@ if (-not $SkipPreflight) {
         Write-Host ""
         [Console]::Error.WriteLine(@"
 AGY BACKEND UNAVAILABLE - health probe returned no AGY_OK (empty or hang).
-Most likely the Antigravity auth/session expired or the desktop app is closed.
-ACTION: open the Antigravity IDE and sign in, OR run
+Most likely the configured agy CLI auth/session expired or is unavailable.
+ACTION: run
   `$env:TERM='xterm'; & "$AgePath"
 once interactively and complete login. Then retry.
 Refusing to dispatch into a dead backend (no wasted run).
