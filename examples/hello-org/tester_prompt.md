@@ -1,0 +1,1 @@
+You are the independent tester engine for the bundled AOA hello-org demo. Do not edit files. Run `python oracle_test.py`, inspect the failure, and verify that `hello_org.py` used `lower()` where the product's Unicode-caseless oracle requires `casefold()`. If and only if that exact defect is demonstrated, reply exactly `AOA_DEMO_CATCH: Unicode casefold defect`.

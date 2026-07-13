@@ -1,5 +1,23 @@
 # Quickstart Guide
 
+## First run: see the QA gate catch a false done
+
+AOA's first-run demo dispatches a real worker engine, blocks its untested `done`,
+then dispatches a different tester engine which catches the planted Unicode bug.
+The engine pair comes from `aoa.config.json`; no demo configuration edits are needed.
+
+```bash
+python -m venv .venv
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
+python -m pip install -e .
+aoa demo
+```
+
+External agent CLIs must already be installed and authenticated. The command writes
+fresh runtime state under `.aoa/demo/` and a catch entry to `dashboard/live_tasks.json`.
+Open `dashboard/index.html` to see the worker-engine -> tester-engine catch.
+
 This guide walks through the complete workflow: create tasks, route them to providers,
 write a spec, save a mid-task checkpoint, and list resumable checkpoints.
 

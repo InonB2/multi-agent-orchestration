@@ -35,6 +35,10 @@
       "stub": {"module": "adapters.stub", "cli_key": "python", "enabled": false}
     }
   },
+  "demo": {
+    "worker_engine": "codex",
+    "tester_engine": "claude"
+  },
   "engine_limits": {
     "claude": 1,
     "codex": 3,
