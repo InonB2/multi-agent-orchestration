@@ -102,6 +102,27 @@ def test_agent_aliases_use_engine_cli_configuration(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    ("provider", "preferred_model", "expected"),
+    [
+        ({}, "claude-code", "custom-claude"),
+        ({}, "codex", "custom-codex"),
+        ({}, "antigravity", "custom-agy"),
+        ({"cli_cmd": "agy"}, "unrelated", "custom-agy"),
+        ({"cli_cmd": "codex.exe"}, "unrelated", "custom-codex"),
+        ({"cli_cmd": "custom-wrapper"}, "claude-code", "custom-wrapper"),
+    ],
+)
+def test_role_agent_resolves_engine_from_provider_or_preferred_model(
+    monkeypatch, provider, preferred_model, expected
+):
+    monkeypatch.setattr(lp, "AOA_CONFIG", {
+        "cli": {"agy": "custom-agy", "claude": "custom-claude", "codex": "custom-codex"}
+    })
+    config = {"provider": provider, "agent": {"preferred_model": preferred_model}}
+    assert lp._resolve_cli_cmd(config, "coder") == expected
+
+
+@pytest.mark.parametrize(
     ("agent", "env_name", "command"),
     [
         ("antigravity", "AOA_AGY_CMD", "agy-env-command"),
@@ -113,6 +134,21 @@ def test_agent_alias_environment_override_reaches_provider_cli(agent, env_name, 
         [sys.executable, str(SCRIPTS / "llm_provider.py"), "info", "--agent", agent],
         cwd=SCRIPTS.parent,
         env={**os.environ, env_name: command},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "CLI tool:      {}".format(command) in result.stdout
+
+
+@pytest.mark.parametrize("agent", ["orchestrator", "coder"])
+def test_shipped_role_agent_honors_claude_environment_override(agent):
+    command = "claude-role-env-command"
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS / "llm_provider.py"), "info", "--agent", agent],
+        cwd=SCRIPTS.parent,
+        env={**os.environ, "AOA_CLAUDE_CMD": command},
         capture_output=True,
         text=True,
         check=False,

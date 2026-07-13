@@ -98,15 +98,24 @@ def _resolve_cli_cmd(config: dict, agent_name: str) -> str:
     binary identically (PTME T-CODE-03).
     """
     provider = config.get("provider", {})
-    engine_key = {
+    aliases = {
         "antigravity": "agy",
         "agy": "agy",
         "claude-code": "claude",
         "claude": "claude",
         "codex": "codex",
-    }.get(agent_name)
+    }
+    candidate = (
+        provider.get("cli_cmd")
+        or config.get("agent", {}).get("preferred_model")
+        or agent_name
+    )
+    candidate_name = Path(str(candidate)).name.lower()
+    if candidate_name.endswith(".exe"):
+        candidate_name = candidate_name[:-4]
+    engine_key = aliases.get(agent_name.lower()) or aliases.get(candidate_name)
     configured = AOA_CONFIG.get("cli", {}).get(engine_key) if engine_key else None
-    return configured or provider.get("cli_cmd") or config.get("agent", {}).get("preferred_model", agent_name)
+    return configured or candidate
 
 
 def _load_task_overrides(task_id: str):
