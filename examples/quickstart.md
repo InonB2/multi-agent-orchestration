@@ -38,7 +38,7 @@ and select two available adapters. For automation, the platform launchers accept
 non-interactive options:
 
 ```powershell
-.\install.ps1 -NonInteractive -Engines claude,codex -NoOpen
+.\install.ps1 -NonInteractive -Engines "claude,codex" -NoOpen
 ```
 
 ```bash
