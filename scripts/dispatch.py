@@ -18,6 +18,7 @@ from pathlib import Path
 
 import config_loader
 import agent_telemetry
+import load_balancer
 from adapters.base import DispatchRequest, Invocation
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -258,6 +259,67 @@ def dispatch_request(request: DispatchRequest, *, task_id: str = "ad-hoc", role:
     return DispatchResult(request.engine, status, code, message, stdout, stderr, elapsed)
 
 
+def dispatch_auto(
+    task_id: str,
+    task_text: str,
+    prompt: str,
+    *,
+    role: str | None = None,
+    workdir: Path | None = None,
+    timeout: int | None = None,
+    worker_engine: str | None = None,
+    override: dict | None = None,
+    enable_mcp: bool = False,
+    dry_run: bool = False,
+    preflight: bool = True,
+    telemetry_path: Path | None = None,
+    config: dict | None = None,
+    emit_telemetry: bool = True,
+) -> DispatchResult:
+    """AOA-11 entry point: let scripts/load_balancer.py decide engine/model/
+    effort from live per-pool quota + capability, THEN dispatch it.
+
+    This is the replacement for hand-picking `--engine`/`--model`/`--effort`:
+    callers that only know the task text + role should call this instead of
+    dispatch_request(). Fail-closed — raises load_balancer.LoadBalancerRefusal
+    (no dispatch attempted, nothing charged to any pool) when every candidate
+    pool is ineligible. Callers must not silently fall back to a manual
+    engine choice on that exception; the refusal is deliberate.
+
+    worker_engine: pass the prior worker's engine when this dispatch is a QA/
+    review pass, so the unbypassable worker != QA gate excludes it.
+    """
+    config = config if config is not None else config_loader.load_aoa_config()
+    workdir = Path(workdir or config.get("paths", {}).get("workdir") or ROOT).resolve()
+    decision = load_balancer.select_route(
+        task_id=task_id,
+        task_text=task_text,
+        role=role,
+        worker_engine=worker_engine,
+        override=override,
+        config=config,
+    )
+    if decision.status == "refused":
+        raise load_balancer.LoadBalancerRefusal(decision)
+
+    entry = config.get("dispatch", {}).get("adapters", {}).get(decision.engine, {})
+    default_timeout = entry.get("timeout_seconds") or config.get("timeouts", {}).get(
+        "{}_dispatch_seconds".format(decision.engine), 600)
+    request = load_balancer.build_dispatch_request(
+        decision, prompt, workdir, timeout or int(default_timeout), enable_mcp=enable_mcp,
+    )
+    return dispatch_request(
+        request,
+        task_id=task_id,
+        role=role or decision.role,
+        dry_run=dry_run,
+        preflight=preflight,
+        telemetry_path=telemetry_path,
+        config=config,
+        emit_telemetry=emit_telemetry,
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--engine", help="Configured adapter name")
@@ -276,6 +338,14 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--skip-preflight", action="store_true")
     p.add_argument("--enable-mcp", action="store_true")
+    p.add_argument("--auto", action="store_true",
+                    help="AOA-11: let load_balancer.py pick engine/model/effort from live quota "
+                         "(this is already the default when --engine is omitted)")
+    p.add_argument("--task-text", help="Text used for AOA-11 routing when it differs from --prompt")
+    p.add_argument("--worker-engine", help="AOA-11: exclude this engine (QA gate)")
+    p.add_argument("--override-actor")
+    p.add_argument("--override-reason")
+    p.add_argument("--override-engine")
     return p
 
 
@@ -286,9 +356,7 @@ def main(argv: list[str] | None = None) -> int:
         for name, entry in sorted(config.get("dispatch", {}).get("adapters", {}).items()):
             print(f"{name}\t{entry.get('module')}\t{'enabled' if entry.get('enabled', True) else 'disabled'}")
         return 0
-    if not args.engine:
-        print("[ERROR] --engine is required", file=sys.stderr)
-        return 1
+    use_auto = args.auto or not args.engine
     if args.prompt_file:
         try:
             prompt = Path(args.prompt_file).read_text(encoding="utf-8-sig")
@@ -309,19 +377,46 @@ def main(argv: list[str] | None = None) -> int:
     if not workdir.is_dir():
         print(f"[ERROR] Workdir not found: {workdir}", file=sys.stderr)
         return 1
-    entry = config.get("dispatch", {}).get("adapters", {}).get(args.engine, {})
-    default_timeout = entry.get("timeout_seconds") or config.get("timeouts", {}).get(
-        f"{args.engine}_dispatch_seconds", 600)
-    request = DispatchRequest(args.engine, prompt, workdir, args.timeout or int(default_timeout),
-                              args.model, args.effort, args.enable_mcp)
-    try:
-        result = dispatch_request(request, task_id=args.task_id, role=args.role,
-                                  dry_run=args.dry_run, preflight=not args.skip_preflight,
-                                  telemetry_path=Path(args.telemetry_path) if args.telemetry_path else None,
-                                  config=config)
-    except (ValueError, ImportError) as exc:
-        print(f"[ERROR] {exc}", file=sys.stderr)
-        return 1
+    if use_auto:
+        override = None
+        if args.override_reason:
+            override = {"actor": args.override_actor, "reason": args.override_reason, "engine": args.override_engine}
+        try:
+            result = dispatch_auto(
+                task_id=args.task_id,
+                task_text=args.task_text or prompt,
+                prompt=prompt,
+                role=args.role,
+                workdir=workdir,
+                timeout=args.timeout,
+                worker_engine=args.worker_engine,
+                override=override,
+                enable_mcp=args.enable_mcp,
+                dry_run=args.dry_run,
+                preflight=not args.skip_preflight,
+                telemetry_path=Path(args.telemetry_path) if args.telemetry_path else None,
+                config=config,
+            )
+        except load_balancer.LoadBalancerRefusal as exc:
+            print(f"[REFUSED] {exc.decision.rationale}", file=sys.stderr)
+            return 1
+        except (ValueError, ImportError) as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            return 1
+    else:
+        entry = config.get("dispatch", {}).get("adapters", {}).get(args.engine, {})
+        default_timeout = entry.get("timeout_seconds") or config.get("timeouts", {}).get(
+            f"{args.engine}_dispatch_seconds", 600)
+        request = DispatchRequest(args.engine, prompt, workdir, args.timeout or int(default_timeout),
+                                  args.model, args.effort, args.enable_mcp)
+        try:
+            result = dispatch_request(request, task_id=args.task_id, role=args.role,
+                                      dry_run=args.dry_run, preflight=not args.skip_preflight,
+                                      telemetry_path=Path(args.telemetry_path) if args.telemetry_path else None,
+                                      config=config)
+        except (ValueError, ImportError) as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            return 1
     if result.message:
         print(result.message)
         if args.output and not args.dry_run:
