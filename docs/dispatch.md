@@ -8,12 +8,18 @@ telemetry. Engine-specific command and response details live only in
 `scripts/adapters/`.
 
 ```bash
+python scripts/dispatch.py --prompt 'Implement the task' --task-id TASK-1 --role worker
 printf '%s' 'Review this repository' | python scripts/dispatch.py \
   --engine codex --workdir . --task-id REVIEW-1 --role qa
 python scripts/dispatch.py --engine claude --prompt-file task.md --workdir .
 python scripts/dispatch.py --engine agy --prompt 'Reply briefly' --workdir .
 python scripts/dispatch.py --engine codex --prompt 'private' --dry-run
 ```
+
+When `--engine` is omitted, the AOA-11 load balancer selects the engine, model,
+and effort from capability and live remaining quota. Pass `--worker-engine` on
+QA/review dispatches to enforce worker/QA engine separation. An explicit
+`--engine` remains available for direct adapter diagnostics.
 
 The dry-run plan never invokes or requires an installed model CLI and replaces
 the prompt with `<redacted>`. Live runs require the configured executable and an

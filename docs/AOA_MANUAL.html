@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AOA Product Manual</title>
+<style>
+  :root {
+    --bg: #ffffff; --ink: #16233a; --muted: #55647a; --line: #cfd8e6;
+    --blue: #1565d8; --blue-soft: #e8f1ff; --violet: #7557d5; --violet-soft: #f0ebff;
+    --green: #168565; --green-soft: #e5f7f1; --amber: #b86608; --amber-soft: #fff3df;
+    --code-bg: #f2f4f8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto; max-width: 900px; padding: 40px 48px 80px;
+    font-family: "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    color: var(--ink); background: var(--bg); line-height: 1.55; font-size: 15px;
+  }
+  h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  h2 {
+    font-size: 21px; margin: 34px 0 12px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--blue); color: var(--blue);
+  }
+  h3 { font-size: 16px; margin: 20px 0 8px; color: var(--ink); }
+  p { margin: 8px 0; }
+  ul, ol { margin: 6px 0; padding-left: 24px; }
+  li { margin: 4px 0; }
+  code {
+    background: var(--code-bg); padding: 1px 6px; border-radius: 4px;
+    font-family: "Cascadia Code", Consolas, "SFMono-Regular", monospace; font-size: 13px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 16px; overflow-x: auto; font-size: 12.5px;
+    font-family: "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13px;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--blue-soft); color: var(--ink); font-weight: 700; }
+  .tldr {
+    background: var(--blue-soft); border: 1px solid var(--blue); border-radius: 10px;
+    padding: 16px 20px; margin: 18px 0; break-inside: avoid;
+  }
+  .tldr h2 { border: none; margin-top: 0; padding-bottom: 0; }
+  .meta { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+  .meta a { color: var(--blue); }
+  .diagram-wrap {
+    margin: 18px 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px;
+    background: #fafcff; break-inside: avoid; page-break-inside: avoid;
+  }
+  .diagram-wrap svg { width: 100%; height: auto; display: block; }
+  .diagram-caption { color: var(--muted); font-size: 12.5px; margin-top: 8px; text-align: center; }
+  .node rect { stroke-width: 2; rx: 14; }
+  .node text { fill: var(--ink); text-anchor: middle; font-size: 15px; font-weight: 700; }
+  .node .small { fill: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+  .core rect { fill: var(--blue-soft); stroke: var(--blue); }
+  .engine rect { fill: var(--violet-soft); stroke: var(--violet); }
+  .quality rect { fill: var(--green-soft); stroke: var(--green); }
+  .future rect { fill: var(--amber-soft); stroke: var(--amber); stroke-dasharray: 9 7; }
+  .arrow { fill: none; stroke: #8ea1b8; stroke-width: 2.2; marker-end: url(#arrow); }
+  .feedback { fill: none; stroke: var(--green); stroke-width: 2.6; stroke-dasharray: 9 7; marker-end: url(#arrow-green); }
+  .future-arrow { fill: none; stroke: var(--amber); stroke-width: 2.2; stroke-dasharray: 8 7; marker-end: url(#arrow-amber); }
+  .edge-label { fill: var(--muted); font-size: 11px; font-weight: 700; text-anchor: middle; }
+  .lane-label { fill: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--blue); display: inline-block; }
+  .dot.engine { background: var(--violet); } .dot.quality { background: var(--green); } .dot.future { background: var(--amber); }
+  .page-break { break-before: page; page-break-before: always; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 28px 0; }
+  @media print {
+    body { padding: 0 8px; }
+    .diagram-wrap, .tldr, table, pre { break-inside: avoid; page-break-inside: avoid; }
+    h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+    @page { size: letter; margin: 0.65in; }
+  }
+</style>
+</head>
+<body>
+
+<h1>AOA product manual</h1>
+<p class="meta">
+  Date: 2026-07-13 &nbsp;&middot;&nbsp; Author: Codex GPT-5.6 Sol &nbsp;&middot;&nbsp;
+  Checked by: AGY Gemini 3.5 Flash (High) — independent QA PASS, 2026-07-13 &nbsp;&middot;&nbsp;
+  Version: 1.0
+</p>
+
+<div class="tldr">
+  <h2>TLDR</h2>
+  <ul>
+    <li>Agents are replaceable; AOA's orchestration, evidence, and independent QA gates are the product.</li>
+    <li>AOA sends work through one adapter contract to different CLI engines without exposing prompts in telemetry.</li>
+    <li>Every normal task moves through <code>in_progress -&gt; tested -&gt; done</code>, and the worker can never certify its own work.</li>
+    <li>PTME chooses capable model/effort options; the planned AOA-11 load balancer will choose among them using live capacity.</li>
+    <li>Start with two authenticated engine CLIs, run the installer, then use <code>aoa demo</code> to see the quality gate catch a planted defect.</li>
+  </ul>
+</div>
+
+<h2>What AOA is and why it exists</h2>
+<p>AOA is a local-first orchestration and quality layer for heterogeneous agent CLIs. It gives Claude Code, Codex, AGY, and future engines one dispatch contract, one task lifecycle, shared recovery state, operational telemetry, and an enforced independent-QA gate.</p>
+<p>Agents are commodities: model names, prices, quotas, and strengths change. The durable product is the layer that decides who can do a task, dispatches it safely, records evidence, prevents self-certification, and learns from outcomes. Quality comes from the <strong>sum of the parts</strong>. A cheap model can implement a bounded task, a different vendor's model can challenge and test it, and the gated result can be stronger than either model working alone.</p>
+<p>AOA invokes already-installed command-line tools. It does not host models, store vendor credentials, or make every engine interchangeable in capability; adapters isolate their verified differences.</p>
+
+<h2>Install</h2>
+<h3>Prerequisites</h3>
+<ul>
+  <li>Git and Python 3.8 or newer. Python below 3.11 also needs <code>tomli</code>.</li>
+  <li>At least two supported CLIs on <code>PATH</code>: <code>claude</code>, <code>codex</code>, or <code>agy</code>.</li>
+  <li>Each selected CLI authenticated through its own vendor-supported login flow.</li>
+  <li>Permission to create a local Python editable install and listen on loopback port <code>7780</code> for the dashboard.</li>
+</ul>
+
+<h3>Windows</h3>
+<p>After cloning the repository, open its folder in File Explorer, right-click <code>install.ps1</code>, and choose <strong>Run with PowerShell</strong>. In a terminal, the equivalent is:</p>
+<pre>Set-Location multi-agent-orchestration
+.\install.ps1</pre>
+<p>If PowerShell policy blocks the script, use the one-run command below from the repository's parent folder:</p>
+<pre>powershell -ExecutionPolicy Bypass -File .\multi-agent-orchestration\install.ps1</pre>
+<p>A double-clickable <code>.bat</code> shim is planned as AOA-15; it is not shipped in version 1.0.</p>
+
+<h3>macOS and Linux</h3>
+<pre>cd multi-agent-orchestration
+chmod +x ./install.sh
+./install.sh</pre>
+<p><code>sh ./install.sh</code> is also supported.</p>
+
+<h3>What the config wizard does</h3>
+<p>The installer discovers registered adapter executables and asks:</p>
+<pre>Adapters to configure [agy,claude,codex]:</pre>
+<p>Press Enter for every discovered engine or enter a comma-separated subset containing at least two. The wizard writes absolute executable paths, enabled lanes, and different demo worker/tester choices to gitignored <code>aoa.config.local.json</code>. It then seeds local task and dashboard state, installs the <code>aoa</code> command, probes authentication sequentially, and starts the dashboard at <a href="http://127.0.0.1:7780/">http://127.0.0.1:7780/</a>. Credentials remain in vendor CLI stores.</p>
+<p>Each auth health-probe is a small live, non-mutating call. It verifies that the executable starts non-interactively, the current session can access a model, and the exact engine marker returns before the configured timeout:</p>
+
+<table>
+  <tr><th>Engine</th><th>Required marker</th><th>What failure means</th></tr>
+  <tr><td>Claude Code</td><td><code>AOA_CLAUDE_OK</code></td><td>The binary, session, model access, or non-interactive invocation is unavailable.</td></tr>
+  <tr><td>Codex</td><td><code>AOA_CODEX_OK</code></td><td>The binary, session, model access, or non-interactive invocation is unavailable.</td></tr>
+  <tr><td>AGY</td><td><code>AOA_AGY_OK</code></td><td>The binary, session, PTY path, model access, or non-interactive invocation is unavailable.</td></tr>
+  <tr><td>Stub fixture</td><td><code>AOA_STUB_OK</code></td><td>The deterministic local adapter contract is broken.</td></tr>
+</table>
+<p>Sequential probes also avoid simultaneous refreshes of vendor auth caches. A failed install prints <code>[preflight] &lt;engine&gt; FAIL</code> and exits loudly; repair the CLI session and rerun.</p>
+
+<h2>Use</h2>
+<h3>Task lifecycle, end to end</h3>
+<ol>
+  <li><strong>Register the task.</strong> Add a neutral task ID, title, complexity, and <code>pending</code> status to <code>tasks/active_tasks.json</code>. M/L/XL supervised tasks also need a validated pre-task spec.</li>
+  <li><strong>Claim and dispatch a worker.</strong> <code>scripts/coordinator.py</code> atomically claims the task, then <code>scripts/dispatch.py</code> loads the configured adapter, runs its preflight, invokes the worker, and captures a report.</li>
+  <li><strong>Write the report incrementally.</strong> Record decisions, commands, exit codes, artifacts, and remaining risk while work is happening. Agent output alone is not a durable QA record.</li>
+  <li><strong>Run independent QA.</strong> A different engine inspects the artifact and acceptance criteria, reruns relevant checks, and writes its own evidence. Failed QA returns work to <code>in_progress</code>.</li>
+  <li><strong>Mark tested.</strong> <code>coordinator.py mark-tested</code> records the different tester and its report path. It does not create the report.</li>
+  <li><strong>Finish.</strong> Only a successfully tested task can move to <code>done</code>; direct <code>in_progress -&gt; done</code> is rejected.</li>
+</ol>
+<p>Typical operator commands are:</p>
+<pre>python scripts/task_spec.py validate --task TASK-101
+python scripts/coordinator.py claim --task TASK-101 --model codex
+python scripts/dispatch.py --engine codex --prompt "Implement TASK-101" --workdir . --task-id TASK-101 --role worker
+python scripts/coordinator.py mark-tested --task TASK-101 --tested-by claude --result-path reports/TASK-101-qa.md
+python scripts/coordinator.py mark-done --task TASK-101
+python scripts/coordinator.py status --task TASK-101</pre>
+
+<h3><code>aoa demo</code> walkthrough</h3>
+<p>Run:</p>
+<pre>aoa demo</pre>
+<p>If the command is not on <code>PATH</code>, use <code>python -m aoa_cli demo</code>. The demo claims <code>HELLO-ORG-001</code>, dispatches a worker, and plants an implementation that passes visible ASCII tests. A premature <code>done</code> transition is blocked. A different tester then runs a hidden-style Unicode oracle and catches the <code>lower()</code> versus <code>casefold()</code> defect.</p>
+<p>Expected key lines are:</p>
+<pre>visible worker tests: PASS
+lifecycle gate: BLOCKED false done (tester sign-off missing)
+independent tester: CAUGHT planted Unicode casefold defect
+task state: in_progress (never advanced to tested/done)</pre>
+<p>The command exits 0 because orchestration worked, not because the planted implementation passed QA. The dashboard records the catch with QA <code>FAIL</code>; demo state is under <code>.aoa/demo/hello-org</code>.</p>
+
+<h3>Read the dashboard</h3>
+<p>Open <a href="http://127.0.0.1:7780/">http://127.0.0.1:7780/</a> after installation. Runtime feeds live under <code>.aoa/dashboard</code>.</p>
+<ul>
+  <li><strong>Top cards</strong> summarize team size, active agents, completed work, learning-loop activity, and available usage data.</li>
+  <li><strong>Engine usage</strong> shows reported capacity. Codex has separate 5-hour and weekly windows. A dash means "not reported," never zero.</li>
+  <li><strong>Agent activity</strong> separates live work from idle seed slots; stale-running rows are operational warnings.</li>
+  <li><strong>Live Tasks</strong> is the dispatch ledger: engine, model, effort, status, duration, and QA result.</li>
+  <li><strong>Analytics and learning</strong> are indicative v0 views. Treat attribution, reconciliation, and lag as preview-quality signals, then inspect the underlying report before making a release decision.</li>
+</ul>
+<p>Refresh after producer updates. If the server is stopped, run <code>python scripts/dashboard_server.py --directory .aoa/dashboard</code>.</p>
+
+<h3>Add an engine</h3>
+<p>The full cold path is in Add your own agent (<code>ADD_YOUR_OWN_AGENT.md</code>):</p>
+<ol>
+  <li>Verify the exact CLI/version contract on every target OS: non-interactive stdin, model/effort flags, tool controls, auth, output, exit codes, cancellation, quotas, concurrency, and child processes.</li>
+  <li>Add <code>scripts/adapters/&lt;engine&gt;.py</code> with <code>engine</code>, <code>build</code>, <code>parse</code>, and <code>probe_prompt</code> using the shared <code>DispatchRequest</code> and <code>Invocation</code> types. Prompts belong in stdin, never argv, environment, display output, or telemetry.</li>
+  <li>Register the adapter disabled in <code>aoa.config.json</code>. For parallel/PTME use, also add an engine limit, a capability row, and complete S/M/L/XL ladders.</li>
+  <li>Review <code>--list-adapters</code> and a redacted <code>--dry-run</code>, enable the adapter, then validate live success and every failure path. Disable and reroute explicitly if the contract fails; never silently substitute an engine.</li>
+</ol>
+<p><code>scripts/adapters/example_echo.py</code> is the working teaching implementation.</p>
+
+<h2 class="page-break">Component by component</h2>
+<h3>Adapter contract and the four adapters</h3>
+<table>
+  <tr><th>Component</th><th>What it does</th><th>Why it matters</th><th>How it works</th><th>File</th></tr>
+  <tr><td>Base contract</td><td>Defines a provider-neutral request, invocation, and adapter protocol.</td><td>Vendor churn stays outside the core dispatcher.</td><td>An adapter builds argv/stdin, parses the final report, and declares a cheap probe marker.</td><td><code>scripts/adapters/base.py</code></td></tr>
+  <tr><td>Claude adapter</td><td>Runs Claude Code headlessly and reads its JSON result.</td><td>Claude can work or test behind the same lifecycle.</td><td>Sends the prompt on stdin, disables unrequested MCP, maps model/effort, parses <code>result</code>.</td><td><code>scripts/adapters/claude.py</code></td></tr>
+  <tr><td>Codex adapter</td><td>Runs <code>codex exec</code> and captures the final agent message.</td><td>Codex becomes a truthful interchangeable lane.</td><td>Streams the prompt to <code>-</code>, parses JSONL, and returns the last completed <code>agent_message</code>.</td><td><code>scripts/adapters/codex.py</code></td></tr>
+  <tr><td>AGY adapter</td><td>Runs AGY through a portable PTY/ConPTY bridge.</td><td>Interactive terminal behavior no longer leaks into dispatch callers.</td><td>Sets <code>TERM=xterm</code>, delegates terminal handling to <code>agy_pty.py</code>, and parses stdout.</td><td><code>scripts/adapters/agy.py</code>, <code>scripts/agy_pty.py</code></td></tr>
+  <tr><td>Stub adapter</td><td>Proves a fourth registration without a vendor account.</td><td>Contract and installer tests stay deterministic.</td><td>Uses local Python, consumes stdin, and returns a fixed health marker.</td><td><code>scripts/adapters/stub.py</code></td></tr>
+</table>
+<p>The additional <code>scripts/adapters/example_echo.py</code> is the AOA-10 tutorial adapter used by the add-an-engine guide; it is disabled by default.</p>
+
+<h3>Dispatch</h3>
+<p><strong>What:</strong> one config-driven execution path. <strong>Why:</strong> every engine gets the same redaction, timeout, cleanup, telemetry, and failure semantics. <strong>How:</strong> it resolves the executable, loads the registered adapter without an engine switch, probes auth, sends stdin in the requested working directory, kills timed-out process trees, parses a final report, and emits prompt-free JSONL. Exit 2 is missing/preflight failure, 3 empty report, 124 timeout, and 130 cancellation. <strong>File:</strong> <code>scripts/dispatch.py</code>.</p>
+
+<h3>Coordinator and lifecycle gate</h3>
+<p><strong>What:</strong> atomic task ownership and guarded state transitions. <strong>Why:</strong> execution cannot be mistaken for proof. <strong>How:</strong> filesystem locks protect claims and updates; <code>mark-tested</code> rejects a worker matching the tester; <code>mark-done</code> requires prior tested state and evidence. Recovery-only <code>--force</code> bypasses safeguards and should not be used normally. <strong>Files:</strong> <code>scripts/coordinator.py</code>, <code>scripts/session_end_gate.py</code>.</p>
+
+<h3>PTME routing</h3>
+<p><strong>What:</strong> task complexity, capability, model, and effort selection. <strong>Why:</strong> small work should not consume the most expensive lane, and a foreign model must not slip into an incompatible engine. <strong>How:</strong> PTME classifies S/M/L/XL, applies engine-scoped ladders and promoted rules, and logs decisions; routers apply queue keywords, role/capability signals, and rate-wall exclusions. <strong>Files:</strong> <code>scripts/ptme.py</code>, <code>scripts/task_router.py</code>, <code>scripts/router.py</code>, <code>scripts/routing_table.py</code>.</p>
+
+<h3>Telemetry and dashboard feeds</h3>
+<p><strong>What:</strong> prompt-free operational visibility. <strong>Why:</strong> operators need to see who ran, duration, failures, QA, capacity, and learning without leaking task content. <strong>How:</strong> dispatch lifecycle events feed activity and live-task bridges; refresh/analytics jobs reconcile JSON/JS feeds consumed by the local dashboard. <strong>Files:</strong> <code>scripts/agent_telemetry.py</code>, <code>scripts/agent_activity.py</code>, <code>scripts/dispatch_worker.py</code>, <code>scripts/orchestrator_stats.py</code>, <code>scripts/build_analytics.py</code>, <code>scripts/telemetry_refresh.py</code>, <code>dashboard/index.html</code>.</p>
+
+<h3>Checkpoint and worktree manager</h3>
+<p><strong>What:</strong> resumable task state and isolated parallel workspaces. <strong>Why:</strong> rate walls or crashes should not erase progress, and concurrent workers must not corrupt one Git index. <strong>How:</strong> checkpoints store completed/remaining/next-step context plus a resume queue; the manager creates a temporary branch and sibling worktree per task, then removes it after completion. <strong>Files:</strong> <code>scripts/checkpoint.py</code>, <code>scripts/worktree_manager.py</code>.</p>
+
+<h3>Deploy and drift gates</h3>
+<p><strong>What:</strong> release preconditions and documentation/runtime consistency checks. <strong>Why:</strong> a green worker report is insufficient if secrets, environment requirements, tests, or examples drift. <strong>How:</strong> the deploy gate runs secret scanning, required-environment validation, tests, and deployment logging; quickstart tests verify documented commands and sample shapes. <strong>Files:</strong> <code>scripts/deploy_gate.py</code>, <code>tests/test_docs_quickstart.py</code>.</p>
+
+<h3>Learning loop</h3>
+<p><strong>What:</strong> converts QA outcomes into measured routing lessons. <strong>Why:</strong> repeated evidence should improve decisions without turning one anecdote into permanent policy. <strong>How:</strong> it records outcomes, reflects candidate rules, validates later benefit, promotes supported rules, demotes regressions, and feeds PTME/dashboard summaries. <strong>File:</strong> <code>scripts/learning_loop.py</code>.</p>
+
+<h2>Important rules: the standards funnel</h2>
+<ol>
+  <li><strong>Worker != tester, always.</strong> Rotate worker/QA engine pairings so one vendor's blind spots do not become policy.</li>
+  <li><strong>No secrets in the repository.</strong> Keep credentials in vendor stores or a secret manager; keep prompts and raw secret-bearing output out of telemetry and reports.</li>
+  <li><strong>Write reports incrementally.</strong> A current report is recovery state, not end-of-task decoration.</li>
+  <li><strong>Fail loudly.</strong> Missing executable, failed probe, empty output, timeout, invalid config, and failed QA are failures — not silent success or implicit fallback.</li>
+  <li><strong>QA before done.</strong> Evidence from a different tester is required before <code>tested</code>, and <code>tested</code> is required before <code>done</code>.</li>
+</ol>
+
+<h2 class="page-break">Cycles and architecture</h2>
+<p>The product cycle is <strong>dispatch -&gt; independent QA -&gt; learn -&gt; route the next task better</strong>. PTME answers <strong>who CAN do this task</strong> from capability and engine/model compatibility. The planned AOA-11 load balancer will answer <strong>who SHOULD do it now</strong> using live quotas, reset windows, concurrency, queue depth, and recent health. Until that gate ships, operators should treat live-load routing as advisory and keep explicit capacity checks.</p>
+
+<div class="diagram-wrap">
+  <svg viewBox="0 0 1440 610" role="img" aria-labelledby="diagram-title diagram-desc">
+    <title id="diagram-title">AOA dispatch, QA, lifecycle, telemetry, and learning flow</title>
+    <desc id="diagram-desc">A task moves through PTME and adapters to multiple engines. Results go to independent QA, a lifecycle gate, dashboard telemetry, and a learning loop that feeds routing.</desc>
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8ea1b8"/></marker>
+      <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#168565"/></marker>
+      <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b86608"/></marker>
+    </defs>
+
+    <text class="lane-label" x="25" y="42">DECIDE</text>
+    <text class="lane-label" x="560" y="42">EXECUTE</text>
+    <text class="lane-label" x="940" y="42">VERIFY</text>
+
+    <path class="arrow" d="M235 155 H290"/><path class="arrow" d="M510 155 H565"/>
+    <path class="arrow" d="M805 155 H850 V128 H900"/>
+    <path class="arrow" d="M805 155 H850 V245 H900"/>
+    <path class="arrow" d="M805 155 H850 V362 H900"/>
+    <path class="arrow" d="M1125 128 H1160 V258"/>
+    <path class="arrow" d="M1125 245 H1160"/><path class="arrow" d="M1125 362 H1160 V318"/>
+    <path class="arrow" d="M1285 362 V410"/><path class="arrow" d="M1100 460 H1060"/>
+    <path class="arrow" d="M790 460 H770"/><path class="feedback" d="M530 460 H440 C350 460 330 375 330 315 V215"/>
+    <path class="future-arrow" d="M390 570 C500 570 505 225 565 190"/>
+
+    <g class="node core"><rect x="25" y="100" width="210" height="110"/><text x="130" y="146">Task</text><text class="small" x="130" y="172">GOAL + ACCEPTANCE</text></g>
+    <g class="node core"><rect x="290" y="100" width="220" height="110"/><text x="400" y="140">PTME / Router</text><text class="small" x="400" y="168">WHO CAN?</text><text class="small" x="400" y="188">CAPABILITY + EFFORT</text></g>
+    <g class="node core"><rect x="565" y="100" width="240" height="110"/><text x="685" y="140">Adapter Layer</text><text class="small" x="685" y="168">ONE SAFE CONTRACT</text><text class="small" x="685" y="188">STDIN + PREFLIGHT</text></g>
+
+    <g class="node engine"><rect x="900" y="82" width="225" height="92"/><text x="1012" y="121">Claude Code</text><text class="small" x="1012" y="145">ENGINE LANE</text></g>
+    <g class="node engine"><rect x="900" y="199" width="225" height="92"/><text x="1012" y="238">Codex</text><text class="small" x="1012" y="262">ENGINE LANE</text></g>
+    <g class="node engine"><rect x="900" y="316" width="225" height="92"/><text x="1012" y="355">AGY + New Engines</text><text class="small" x="1012" y="379">EXTENSIBLE LANES</text></g>
+
+    <g class="node quality"><rect x="1160" y="238" width="255" height="124"/><text x="1287" y="278">Independent QA</text><text class="small" x="1287" y="305">DIFFERENT ENGINE</text><text class="small" x="1287" y="326">TEST + EVIDENCE</text></g>
+    <g class="node quality"><rect x="1100" y="410" width="315" height="100"/><text x="1257" y="448">Lifecycle Gate</text><text class="small" x="1257" y="476">IN PROGRESS -&gt; TESTED -&gt; DONE</text></g>
+    <g class="node core"><rect x="790" y="410" width="270" height="100"/><text x="925" y="448">Dashboard + Telemetry</text><text class="small" x="925" y="476">STATUS - USAGE - QA</text></g>
+    <g class="node quality"><rect x="530" y="410" width="240" height="100"/><text x="650" y="448">Learning Loop</text><text class="small" x="650" y="476">VALIDATED FEEDBACK</text></g>
+
+    <g class="node future"><rect x="100" y="520" width="290" height="82"/><text x="245" y="552">AOA-11 Load Balancer</text><text class="small" x="245" y="578">WHO SHOULD? - QUOTAS + LOAD</text></g>
+    <text class="edge-label" x="485" y="555">planned capacity signal</text>
+    <text class="edge-label" x="430" y="432">learn</text>
+  </svg>
+  <div class="diagram-caption">AOA dispatch → independent QA → lifecycle gate → telemetry → learning-loop flow (adapted from docs/architecture.html)</div>
+  <div class="legend">
+    <span><i class="dot"></i> orchestration</span>
+    <span><i class="dot engine"></i> engines</span>
+    <span><i class="dot quality"></i> quality gates</span>
+    <span><i class="dot future"></i> planned</span>
+  </div>
+</div>
+
+<p>A screenshot-ready standalone rendering of this same diagram also lives at <code>docs/architecture.html</code> in the source repository.</p>
+
+<h2 class="page-break">Known issues and troubleshooting</h2>
+
+<h3>Engine rate walls and preflight refusal</h3>
+<p>Run <code>python scripts/rate_wall_watchdog.py check</code> and <code>python scripts/rate_wall_watchdog.py should-dispatch --engine codex</code>. At the blocking threshold the latter prints <code>codex: WALLED - do NOT dispatch</code>, reports the reset window, and exits nonzero. A live health marker may also fail, producing a generic preflight refusal/exit 2. In-flight work is killed, not paused; save checkpoints and redispatch after reset.</p>
+<p>The watchdog reads local session telemetry, so its newest percentage can remain stale after reset until a fresh CLI event is written. Check the displayed source/reset time, make one cheap vendor CLI call to refresh telemetry, then rerun <code>check</code>. Never bypass a genuinely failing live probe.</p>
+
+<h3>AGY terminal sandbox regression</h3>
+<p>Symptom: shell-using jobs report <code>ShellExecute failed: The operation was canceled by the user</code>, then <code>timeout waiting for response</code>, while text-only work may succeed. Inspect the vendor CLI log and settings for terminal sandbox routing. On affected Windows setups, the proven workaround is to disable terminal sandbox execution and change tool permission from <code>proceed-in-sandbox</code> to <code>always-proceed</code>, but only if local security policy allows it. Otherwise repair the sandbox/UAC launcher. Retest twice with a harmless shell command.</p>
+
+<h3>Silent model-name fallback</h3>
+<p>A successful CLI exit does not prove the vendor honored an unknown or deprecated model slug. Use a canonical model ID listed by the installed CLI, inspect the dry-run argv, make a minimal live call that reports the actual model when supported, and compare <code>logs/ptme_decisions.jsonl</code>. Remove invalid config or fail explicitly; never accept a silent vendor fallback as the requested model.</p>
+
+<h3>Runtime dashboard state dirties tracked files</h3>
+<p>Some legacy producers still default to tracked <code>dashboard/*.json</code> or <code>dashboard/*.js</code>, while the installer serves runtime state from <code>.aoa/dashboard</code>. This cleanup is tracked as INO-27. Until it lands, target <code>.aoa/dashboard</code>, check <code>git status</code> after runtime commands, and never commit generated activity/history into the empty shipped feeds.</p>
+
+<h3>Fast symptom table</h3>
+<table>
+  <tr><th>Symptom</th><th>Action</th></tr>
+  <tr><td>Installer finds fewer than two adapters</td><td>Put two supported, authenticated CLIs on <code>PATH</code>, then rerun.</td></tr>
+  <tr><td>Dispatch exits 2</td><td>Repair executable/auth/model access; rerun the adapter probe.</td></tr>
+  <tr><td>Dispatch exits 3</td><td>Treat empty parsed output as a backend/parser failure.</td></tr>
+  <tr><td>Dispatch exits 124</td><td>Inspect partial work, save a checkpoint, then retry after capacity returns or raise the verified timeout.</td></tr>
+  <tr><td><code>mark-done</code> is rejected</td><td>Run different-engine QA, save its report, call <code>mark-tested</code>, then retry.</td></tr>
+  <tr><td>Dashboard is unavailable</td><td>Start <code>python scripts/dashboard_server.py --directory .aoa/dashboard</code> and confirm port 7780 is free.</td></tr>
+</table>
+
+<hr>
+<p class="meta">Links: README (<code>../README.md</code>) &middot; Architecture (<code>../ARCHITECTURE.md</code>) &middot; Operators (<code>../OPERATORS.md</code>) — see the source repo at <code>scratchpad/aoa-work/multi-agent-orchestration/</code>.</p>
+
+</body>
+</html>

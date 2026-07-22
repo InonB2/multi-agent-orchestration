@@ -46,6 +46,20 @@
     "agy": 3,
     "example_echo": 2
   },
+  "load_balancer": {
+    "min_remaining_pct": 10.0,
+    "max_snapshot_age_seconds": 3600,
+    "allow_unknown_quota": false,
+    "claude_estimated_remaining_pct": null,
+    "history_lookback": 25,
+    "reserve_pct_by_complexity": {"S": 0.5, "M": 1.0, "L": 2.5, "XL": 5.0},
+    "pools": {
+      "codex": ["codex"],
+      "claude": ["claude"],
+      "agy_gemini": ["agy:gemini"],
+      "agy_claude_gpt": ["agy:claude", "agy:gpt-oss"]
+    }
+  },
   "models": {
     "capabilities": {
       "claude-haiku-4.5": {"family": "claude", "model_family": "claude", "strengths": ["cheap fast edits", "small docs", "label/copy fixes"], "cost_tier": "low"},
