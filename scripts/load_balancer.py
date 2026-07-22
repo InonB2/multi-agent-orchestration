@@ -504,6 +504,70 @@ def _append_jsonl_record_safe(path: Path, record: dict, attempts: int = 20) -> N
         raise last_exc
 
 
+def _decision_path_refusal(
+    *,
+    task_id: str,
+    role: str | None,
+    complexity: str,
+    worker_engine: str | None,
+    failure_point: str,
+    exc: Exception,
+    decisions_log: Path,
+    learning_log: Path,
+    log: bool,
+) -> LoadBalancerDecision:
+    """Return and log the standard fail-closed decision for setup failures."""
+    reason = "decision path error in {}: {} — refusing (fail-closed)".format(failure_point, exc)
+    resolved_role = role or "unknown"
+    decision = LoadBalancerDecision(
+        schema_version=1,
+        decision_kind="load_balancer",
+        status="refused",
+        task_id=task_id,
+        task_type=resolved_role,
+        role=role,
+        complexity=complexity,
+        engine=None,
+        model=None,
+        effort=None,
+        debit_pool=None,
+        candidate_order=[],
+        excluded=[{
+            "engine": None,
+            "reason": reason,
+            "reason_code": "decision_path_error",
+            "failure_point": failure_point,
+        }],
+        quota_snapshot={},
+        rationale=reason,
+        override=None,
+        bypassed_gates=[],
+        worker_engine_ref=worker_engine,
+        decision_ts=ptme.now_iso(),
+    )
+    if log:
+        _append_jsonl_record_safe(decisions_log, decision.to_log_record())
+        _append_jsonl_record_safe(learning_log, {
+            "task_id": task_id,
+            "engine": None,
+            "role": role,
+            "complexity": complexity,
+            "signals": ["decision_path_error:{}".format(failure_point), str(exc)],
+            "qa_verdict": None,
+            "success": False,
+            "planned_tokens": None,
+            "actual_tokens": None,
+            "token_delta": None,
+            "planned_duration_ms": None,
+            "actual_duration_ms": None,
+            "duration_delta_ms": None,
+            "load_balancer_status": "refused",
+            "load_balancer_debit_pool": None,
+            "ts": decision.decision_ts,
+        })
+    return decision
+
+
 def select_route(
     task_id: str,
     task_text: str,
@@ -533,15 +597,40 @@ def select_route(
         ranked) candidate. It can NEVER bypass rate-wall exclusion or the
         worker != QA hard gate.
     """
-    aoa_config = config if config is not None else config_loader.load_aoa_config()
-    lb_cfg = _lb_config(aoa_config)
-    threshold = float(lb_cfg["min_remaining_pct"])
-    allow_unknown = bool(lb_cfg["allow_unknown_quota"])
     decisions_log = decisions_log or DECISIONS_LOG
     learning_log = learning_log or LEARNING_LOG
 
-    complexity = ptme.classify_complexity(task_text)
-    resolved_role = role or router.infer_role(task_text)
+    try:
+        aoa_config = config if config is not None else config_loader.load_aoa_config()
+    except Exception as exc:
+        return _decision_path_refusal(
+            task_id=task_id, role=role, complexity="unknown", worker_engine=worker_engine,
+            failure_point="config_loader.load_aoa_config", exc=exc,
+            decisions_log=decisions_log, learning_log=learning_log, log=log,
+        )
+    lb_cfg = _lb_config(aoa_config)
+    threshold = float(lb_cfg["min_remaining_pct"])
+    allow_unknown = bool(lb_cfg["allow_unknown_quota"])
+
+    try:
+        complexity = ptme.classify_complexity(task_text)
+    except Exception as exc:
+        return _decision_path_refusal(
+            task_id=task_id, role=role, complexity="unknown", worker_engine=worker_engine,
+            failure_point="ptme.classify_complexity", exc=exc,
+            decisions_log=decisions_log, learning_log=learning_log, log=log,
+        )
+    if role:
+        resolved_role = role
+    else:
+        try:
+            resolved_role = router.infer_role(task_text)
+        except Exception as exc:
+            return _decision_path_refusal(
+                task_id=task_id, role=role, complexity=complexity, worker_engine=worker_engine,
+                failure_point="router.infer_role", exc=exc,
+                decisions_log=decisions_log, learning_log=learning_log, log=log,
+            )
 
     exclude_engines: set[str] = set()
     hard_gate_note = None

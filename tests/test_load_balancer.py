@@ -223,6 +223,49 @@ def test_claude_quota_uses_configured_estimate():
 
 
 # --------------------------------------------------------------------------- refusal / fail-closed
+@pytest.mark.parametrize(
+    ("failure_point", "patch_target", "kwargs"),
+    [
+        ("config_loader.load_aoa_config", "config", {}),
+        ("ptme.classify_complexity", "complexity", {"config": {}}),
+        ("router.infer_role", "role", {"config": {}}),
+    ],
+)
+def test_decision_path_exception_returns_clean_refusal(
+    monkeypatch, tmp_path, failure_point, patch_target, kwargs
+):
+    message = "synthetic {} failure".format(patch_target)
+
+    def raise_error(*args, **kwargs):
+        raise RuntimeError(message)
+
+    if patch_target == "config":
+        monkeypatch.setattr(load_balancer.config_loader, "load_aoa_config", raise_error)
+    elif patch_target == "complexity":
+        monkeypatch.setattr(load_balancer.ptme, "classify_complexity", raise_error)
+    else:
+        monkeypatch.setattr(load_balancer.router, "infer_role", raise_error)
+
+    decision, decisions_log, learning_log = _select(
+        monkeypatch,
+        tmp_path,
+        task_id="ERR-{}".format(patch_target),
+        task_text="route this task",
+        **kwargs,
+    )
+
+    assert decision.status == "refused"
+    assert decision.engine is None
+    assert failure_point in decision.rationale
+    assert message in decision.rationale
+    logged = json.loads(decisions_log.read_text(encoding="utf-8").strip())
+    assert logged["status"] == "refused"
+    assert message in logged["rationale"]
+    learning = json.loads(learning_log.read_text(encoding="utf-8").strip())
+    assert learning["success"] is False
+    assert message in learning["signals"]
+
+
 def test_all_pools_below_floor_refuses(monkeypatch, tmp_path):
     _no_rules(monkeypatch)
     _all_available(monkeypatch)

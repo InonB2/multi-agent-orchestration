@@ -1,5 +1,7 @@
 # AOA product manual
 
+> **Other formats:** [Editable HTML manual](AOA_MANUAL.html) (includes diagrams) · [PDF manual](AOA_MANUAL.pdf)
+
 > **TLDR**
 >
 > - Agents are replaceable; AOA's orchestration, evidence, and independent QA gates are the product.
