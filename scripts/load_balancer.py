@@ -311,7 +311,11 @@ def _redact_quota(quota: dict[str, dict]) -> dict[str, dict]:
             "windows": snap.get("windows", {}),
             "source": snap.get("source"),
             "confidence": snap.get("confidence"),
-            "age_seconds": (round(snap["age_seconds"], 1) if isinstance(snap.get("age_seconds"), (int, float)) else None),
+            "age_seconds": (
+                round(snap["age_seconds"], 1)
+                if isinstance(snap.get("age_seconds"), (int, float))
+                else None
+            ),
         }
     return redacted
 

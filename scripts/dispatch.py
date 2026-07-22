@@ -338,9 +338,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--skip-preflight", action="store_true")
     p.add_argument("--enable-mcp", action="store_true")
-    p.add_argument("--auto", action="store_true",
-                    help="AOA-11: let load_balancer.py pick engine/model/effort from live quota "
-                         "(this is already the default when --engine is omitted)")
+    p.add_argument(
+        "--auto",
+        action="store_true",
+        help="AOA-11: let load_balancer.py pick engine/model/effort from live quota "
+        "(this is already the default when --engine is omitted)",
+    )
     p.add_argument("--task-text", help="Text used for AOA-11 routing when it differs from --prompt")
     p.add_argument("--worker-engine", help="AOA-11: exclude this engine (QA gate)")
     p.add_argument("--override-actor")
