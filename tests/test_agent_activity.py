@@ -80,9 +80,11 @@ def test_clear_resets_agent_to_idle_defaults(tmp_path, monkeypatch):
     assert entry["reason"] == ""
     assert entry["updated_at"] is not None
 
-    mirrored_payload = json.loads(
-        _read_activity_js(activity_js_file).removeprefix("window.AGENT_ACTIVITY = ").removesuffix(";")
-    )
+    mirrored_json = _read_activity_js(activity_js_file)
+    prefix = "window.AGENT_ACTIVITY = "
+    mirrored_json = mirrored_json[len(prefix):] if mirrored_json.startswith(prefix) else mirrored_json
+    mirrored_json = mirrored_json[:-1] if mirrored_json.endswith(";") else mirrored_json
+    mirrored_payload = json.loads(mirrored_json)
     mirrored_entry = next(item for item in mirrored_payload["entries"] if item["agent"] == "orchestrator")
     assert mirrored_entry == entry
 
