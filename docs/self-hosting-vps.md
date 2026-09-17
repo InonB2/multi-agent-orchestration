@@ -208,8 +208,7 @@ agy login            # device-code login -> libsecret keyring
 > SLA. Keep the HTTP-API fallback (provider keys in `.env`) for all three.
 
 The gateway binds **127.0.0.1 only**; Caddy is the sole public entrypoint
-(ports 80/443). A full operator walkthrough lives in the owner's
-`HOSTINGER_VPS_SETUP_GUIDE.md`.
+(ports 80/443).
 
 ## Security notes
 

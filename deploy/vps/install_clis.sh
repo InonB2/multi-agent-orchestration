@@ -10,7 +10,7 @@
 #
 # It installs the BINARIES only. It does NOT log any CLI in — each CLI requires
 # an interactive, per-user device-code / OAuth login that YOU must run once as
-# the `mmoi` user on the box (see HOSTINGER_VPS_SETUP_GUIDE.md, "CLI logins").
+# the `mmoi` user on the box (see docs/self-hosting-vps.md).
 #
 # ToS NOTE (be honest with yourself before relying on these):
 #   - Claude: `claude -p` draws from a capped monthly Agent-SDK credit from
@@ -93,4 +93,4 @@ echo "  sudo -iu ${MMOI_USER}"
 echo "    claude setup-token        # prints URL+code; creates ~/.claude OAuth token (Pro/Max plan)"
 echo "    codex login               # device-code login; caches ~/.codex/auth.json"
 echo "    agy login                 # device-code login; caches creds in libsecret keyring"
-echo "  See HOSTINGER_VPS_SETUP_GUIDE.md for the full login walkthrough + ToS flags."
+echo "  See docs/self-hosting-vps.md for the full login walkthrough + ToS flags."
