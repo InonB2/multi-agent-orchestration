@@ -49,13 +49,15 @@ no comparable wall telemetry locally).
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import codex_usage
 
 WALL_WARN_PCT = 90.0   # surface in `check`
 WALL_BLOCK_PCT = 99.0  # block dispatch in `should-dispatch`
+WALL_TELEMETRY_TTL_SECONDS = 300.0
 
 
 def _epoch_to_local(epoch: float | int | None) -> str | None:
@@ -86,6 +88,9 @@ def read_codex_windows(sessions_root: Path = codex_usage.DEFAULT_SESSIONS_ROOT) 
     result = {
         "found": False,
         "source": None,
+        "observed_at": None,
+        "observed_at_local": None,
+        "telemetry_age_seconds": None,
         "windows": {"primary": dict(empty_window), "secondary": dict(empty_window)},
     }
     if not sessions_root.exists():
@@ -103,6 +108,14 @@ def read_codex_windows(sessions_root: Path = codex_usage.DEFAULT_SESSIONS_ROOT) 
 
     path = session_files[0]
     result["source"] = str(path)
+    try:
+        observed_at = float(path.stat().st_mtime)
+    except OSError:
+        observed_at = None
+    result["observed_at"] = observed_at
+    result["observed_at_local"] = _epoch_to_local(observed_at)
+    if observed_at is not None:
+        result["telemetry_age_seconds"] = max(0.0, datetime.now(timezone.utc).timestamp() - observed_at)
     rate_limits = None
     for row in codex_usage.read_jsonl(path):
         if row.get("type") != "event_msg":
@@ -130,6 +143,14 @@ def read_codex_windows(sessions_root: Path = codex_usage.DEFAULT_SESSIONS_ROOT) 
             "window_minutes": win.get("window_minutes"),
         }
     return result
+
+
+def telemetry_is_stale(state: dict, max_age_seconds: float = WALL_TELEMETRY_TTL_SECONDS) -> bool:
+    age = state.get("telemetry_age_seconds")
+    try:
+        return float(age) > float(max_age_seconds)
+    except (TypeError, ValueError):
+        return True
 
 
 def _binding_window(windows: dict) -> tuple[str | None, dict]:
@@ -187,6 +208,17 @@ def cmd_should_dispatch(args: argparse.Namespace) -> int:
     if not state["found"]:
         # Fail-open: no telemetry means we cannot prove a wall; allow dispatch.
         print("codex: no rate telemetry found; assuming safe to dispatch.")
+        return 0
+    if telemetry_is_stale(state):
+        age = state.get("telemetry_age_seconds")
+        age_text = "{:.0f}s".format(float(age)) if isinstance(age, (int, float)) else "unknown age"
+        print(
+            "codex: rate telemetry is stale ({} old from {}). not blocking dispatch; "
+            "live health probe should decide.".format(
+                age_text,
+                state.get("observed_at_local") or state.get("source") or "unknown source",
+            )
+        )
         return 0
 
     walled = []

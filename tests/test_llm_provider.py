@@ -224,6 +224,19 @@ def test_list_shows_provider_types(cfg_dir, capsys):
     assert "api" in out
 
 
+def test_no_context_uses_explicit_effort_default(cfg_dir, tmp_path, capsys):
+    profile = lp.resolve_execution_profile(
+        "testcli",
+        log_path=tmp_path / "decisions.jsonl",
+    )
+
+    assert profile["model"] is None
+    assert profile["effort"] == "medium"
+    assert profile["decision"]["decision_source"]["effort"] == "explicit_default_no_context"
+    assert profile["decision"]["decided_by"].endswith(":no-context-default")
+    assert "no routing context" in capsys.readouterr().err
+
+
 # ---------------------------------------------------------------------------
 # run --dry-run — cli agent
 # ---------------------------------------------------------------------------

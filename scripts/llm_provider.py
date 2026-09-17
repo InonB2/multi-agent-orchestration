@@ -40,6 +40,9 @@ ROOT       = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config" / "agents"
 DEFAULTS   = CONFIG_DIR / "_defaults.toml"
 DECISION_LOG = ROOT / "logs" / "ptme_decisions.jsonl"
+# Ensures an uncontextualized CLI request produces an explicit, auditable
+# decision rather than a misleading all-null PTME record.
+DEFAULT_EFFORT = "medium"
 # PTME: repo-local task queue — the single source of truth for per-task
 # model/effort overrides looked up via `run --task-id`. Module-level so tests
 # can monkeypatch it (mirrors coordinator.py / task_router.py).
@@ -250,12 +253,33 @@ def resolve_execution_profile(
         complexity=resolved_complexity,
     )
 
+    context_missing = (
+        final_model is None
+        and final_effort is None
+        and not any([
+            cli_model, cli_effort, task_id, complexity,
+            task_model, task_effort, task_complexity,
+        ])
+    )
+    if context_missing:
+        final_effort = DEFAULT_EFFORT
+        recommended_effort = recommended_effort or DEFAULT_EFFORT
+        decided_by = "{}:no-context-default".format(decided_by)
+        print(
+            "[WARN] llm_provider PTME: no routing context for agent {!r}; "
+            "applying explicit default effort={!r}, model left to the CLI default."
+            .format(agent_name, DEFAULT_EFFORT),
+            file=sys.stderr,
+        )
+
     model_source = _decision_source(
         cli_model, task_model, mapped.get("model"), provider.get("model")
     )
     effort_source = _decision_source(
         cli_effort, task_effort, mapped.get("effort"), provider.get("effort")
     )
+    if context_missing:
+        effort_source = "explicit_default_no_context"
     record = {
         "task_id": task_id or "",
         "complexity": resolved_complexity or "",
