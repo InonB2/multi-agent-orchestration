@@ -16,6 +16,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from task_router import (  # noqa: E402
+    classify_capability,
     score_task,
     pick_provider,
     load_routing_config,
@@ -23,6 +24,18 @@ from task_router import (  # noqa: E402
     ROUTING_RULES,
     DEFAULT_PROVIDER,
 )
+
+
+def test_capability_classifier_uses_title_and_notes():
+    assert classify_capability({"title": "Plan rollout", "notes": "audit OWASP risks"}) == "security"
+
+
+def test_capability_classifier_uses_word_boundaries_and_general_fallback():
+    assert classify_capability("add a prefix") == "general"
+
+
+def test_capability_classifier_has_deterministic_priority_for_ties():
+    assert classify_capability("audit database access") == "security"
 
 
 # ---------------------------------------------------------------------------

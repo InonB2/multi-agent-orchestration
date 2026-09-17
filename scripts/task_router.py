@@ -15,8 +15,9 @@ import json
 import os
 import re
 import sys
-import time
 from pathlib import Path
+
+import sidecar_lock
 
 # ---------------------------------------------------------------------------
 # TOML import — stdlib (Python 3.11+) with fallback to tomli
@@ -53,6 +54,39 @@ ROUTING_RULES = {
 }
 
 DEFAULT_PROVIDER = "claude-code"
+
+# Capability classification is intentionally separate from provider routing.
+# Composed dispatchers can use this stable task label without inheriting the
+# legacy provider scorer below.
+CAPABILITY_RULES = {
+    "security": ("security", "audit", "vulnerability", "owasp", "cwe"),
+    "data": ("database", "schema", "migration", "sql", "rls", "postgres"),
+    "testing": ("test", "qa", "verify", "regression", "lighthouse"),
+    "automation": ("automation", "webhook", "oauth", "bot", "mcp"),
+    "web": ("browser", "website", "frontend", "react", "html", "css"),
+    "design": ("design", "ui", "ux", "visual", "wireframe"),
+    "research": ("research", "investigate", "compare", "summarize", "benchmark"),
+    "content": ("write", "copy", "post", "cover letter", "proposal"),
+    "code": ("implement", "code", "refactor", "fix", "bug", "script", "api"),
+}
+CAPABILITY_PRIORITY = tuple(CAPABILITY_RULES)
+
+
+def classify_capability(task: dict | str) -> str:
+    """Classify a task into one capability without selecting a provider."""
+    if isinstance(task, dict):
+        text = " ".join((str(task.get("title", "")), str(task.get("notes", "") or "")))
+    else:
+        text = str(task or "")
+    scores = {
+        capability: sum(1 for keyword in keywords if _keyword_matches(keyword, text))
+        for capability, keywords in CAPABILITY_RULES.items()
+    }
+    best = max(scores.values(), default=0)
+    if best <= 0:
+        return "general"
+    return next(capability for capability in CAPABILITY_PRIORITY if scores[capability] == best)
+
 
 # ---------------------------------------------------------------------------
 # ORCH-19 — keyword weighting, negative keywords, confidence threshold.
@@ -133,31 +167,6 @@ def load_routing_config(path: Path = None) -> RoutingConfig:
 def _keyword_matches(keyword: str, text: str) -> bool:
     """Word-boundary, case-insensitive match (EDGE-1) — prevents 'prefix'~'fix'."""
     return re.search(r'\b' + re.escape(keyword) + r'\b', text, re.IGNORECASE) is not None
-
-
-# ---------------------------------------------------------------------------
-# File-lock helpers (cross-platform sidecar-file pattern)  [REL-2]
-# ---------------------------------------------------------------------------
-
-def _acquire_lock(lock_path: Path, timeout: int = 10) -> bool:
-    """Try to create *lock_path* exclusively. Returns True on success, False on timeout."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.close(fd)
-            return True
-        except FileExistsError:
-            time.sleep(0.05)
-    return False
-
-
-def _release_lock(lock_path: Path) -> None:
-    """Delete the sidecar lock file, ignoring missing-file errors."""
-    try:
-        lock_path.unlink()
-    except FileNotFoundError:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -362,7 +371,7 @@ def route_tasks(dry_run=False, task_id_filter=None):
 
     # REL-2: acquire lock before writing to guard against concurrent processes
     lock_path = Path(str(TASKS_FILE) + ".lock")
-    if not _acquire_lock(lock_path):
+    if not sidecar_lock.acquire_lock(lock_path):
         print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
         sys.exit(1)
     try:
@@ -374,7 +383,7 @@ def route_tasks(dry_run=False, task_id_filter=None):
         )
         os.replace(tmp, TASKS_FILE)
     finally:
-        _release_lock(lock_path)
+        sidecar_lock.release_lock(lock_path)
 
     summary_parts = ["{} -> {}".format(n, p) for p, n in counters.items()]
     print("\nRouted {} tasks: {}".format(routed_count, ", ".join(summary_parts)))
