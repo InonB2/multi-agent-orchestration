@@ -47,9 +47,10 @@ import os
 import re
 import subprocess
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+import sidecar_lock
 
 ROOT          = Path(__file__).resolve().parent.parent
 TASKS_FILE    = ROOT / "tasks" / "active_tasks.json"
@@ -143,36 +144,11 @@ def _enforce_status_transition(task: dict, new_status: str, force: bool) -> None
         if force:
             print("[WARN] --force overriding status guard: {}".format(err),
                   file=sys.stderr)
+            _record_forced_override(task, "STATUS-TRANSITION", "status-guard", err)
         else:
             print("[ERROR] {}. Use --force to override.".format(err),
                   file=sys.stderr)
             sys.exit(1)
-
-
-# ---------------------------------------------------------------------------
-# File-lock helpers (cross-platform sidecar-file pattern)  [REL-2]
-# All scripts that read-modify-write active_tasks.json use the same lock path.
-# ---------------------------------------------------------------------------
-
-def _acquire_lock(lock_path: Path, timeout: int = 10) -> bool:
-    """Try to create *lock_path* exclusively. Returns True on success, False on timeout."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.close(fd)
-            return True
-        except FileExistsError:
-            time.sleep(0.05)
-    return False
-
-
-def _release_lock(lock_path: Path) -> None:
-    """Delete the sidecar lock file, ignoring missing-file errors."""
-    try:
-        lock_path.unlink()
-    except FileNotFoundError:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +216,12 @@ def _append_log_entry(task: dict, entry: str):
     task["coordinator_log"] = log
 
 
+def _record_forced_override(task: dict, action: str, guard: str, message: str):
+    """Persist an auditable marker whenever ``--force`` bypasses a guard."""
+    _append_log_entry(task, "{} (FORCED: {}) {}".format(action, guard, message))
+    task["forced"] = True
+
+
 # ---------------------------------------------------------------------------
 # External script caller  [REL-3]
 # ---------------------------------------------------------------------------
@@ -285,7 +267,7 @@ def cmd_claim(args):
 
     # REL-2: acquire lock before read-modify-write cycle
     lock_path = Path(str(TASKS_FILE) + ".lock")
-    if not _acquire_lock(lock_path):
+    if not sidecar_lock.acquire_lock(lock_path):
         print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
         sys.exit(1)
     try:
@@ -320,7 +302,7 @@ def cmd_claim(args):
 
         _save_tasks(data)
     finally:
-        _release_lock(lock_path)
+        sidecar_lock.release_lock(lock_path)
 
     print("[OK] Task '{}' claimed by {} (status=in_progress, phase=claimed)".format(task_id, model))
 
@@ -348,7 +330,7 @@ def cmd_update(args):
 
     # REL-2: acquire lock before read-modify-write cycle
     lock_path = Path(str(TASKS_FILE) + ".lock")
-    if not _acquire_lock(lock_path):
+    if not sidecar_lock.acquire_lock(lock_path):
         print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
         sys.exit(1)
     try:
@@ -366,7 +348,7 @@ def cmd_update(args):
 
         _save_tasks(data)
     finally:
-        _release_lock(lock_path)
+        sidecar_lock.release_lock(lock_path)
 
     print("[OK] Task '{}' phase updated to '{}'".format(task_id, phase))
     if note:
@@ -402,7 +384,7 @@ def cmd_checkpoint(args):
     if rc == 0:
         # REL-2: acquire lock before read-modify-write cycle
         lock_path = Path(str(TASKS_FILE) + ".lock")
-        if not _acquire_lock(lock_path):
+        if not sidecar_lock.acquire_lock(lock_path):
             print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
             sys.exit(1)
         try:
@@ -413,7 +395,7 @@ def cmd_checkpoint(args):
                 _append_log_entry(task, "CHECKPOINTED interrupted_by={}".format(interrupted_by))
                 _save_tasks(data)
         finally:
-            _release_lock(lock_path)
+            sidecar_lock.release_lock(lock_path)
     else:
         sys.exit(rc)
 
@@ -443,7 +425,7 @@ def cmd_mark_tested(args):
 
     # REL-2: acquire lock before read-modify-write cycle
     lock_path = Path(str(TASKS_FILE) + ".lock")
-    if not _acquire_lock(lock_path):
+    if not sidecar_lock.acquire_lock(lock_path):
         print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
         sys.exit(1)
     try:
@@ -467,6 +449,7 @@ def cmd_mark_tested(args):
             if force:
                 print("[WARN] --force overriding tester guard: {}".format(msg),
                       file=sys.stderr)
+                _record_forced_override(task, "MARK-TESTED", "tester-guard", msg)
             else:
                 print("[ERROR] {}".format(msg), file=sys.stderr)
                 sys.exit(1)
@@ -486,7 +469,7 @@ def cmd_mark_tested(args):
 
         _save_tasks(data)
     finally:
-        _release_lock(lock_path)
+        sidecar_lock.release_lock(lock_path)
 
     print("[OK] Task '{}' marked tested (status=tested, phase=done)".format(task_id))
     if result_path:
@@ -520,7 +503,7 @@ def cmd_mark_done(args):
 
     # REL-2: acquire lock before read-modify-write cycle
     lock_path = Path(str(TASKS_FILE) + ".lock")
-    if not _acquire_lock(lock_path):
+    if not sidecar_lock.acquire_lock(lock_path):
         print("[ERROR] Could not acquire lock on tasks file", file=sys.stderr)
         sys.exit(1)
     try:
@@ -539,6 +522,7 @@ def cmd_mark_done(args):
             if force:
                 print("[WARN] --force overriding done gate: {}".format(msg),
                       file=sys.stderr)
+                _record_forced_override(task, "MARK-DONE", "tester-guard", msg)
             else:
                 print("[ERROR] {}".format(msg), file=sys.stderr)
                 sys.exit(1)
@@ -552,7 +536,7 @@ def cmd_mark_done(args):
 
         _save_tasks(data)
     finally:
-        _release_lock(lock_path)
+        sidecar_lock.release_lock(lock_path)
 
     print("[OK] Task '{}' marked done (status=done — final terminal state)".format(task_id))
 
