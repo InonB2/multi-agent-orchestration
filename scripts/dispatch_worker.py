@@ -17,6 +17,7 @@ from pathlib import Path
 import agent_activity
 import codex_usage
 import ptme
+import runtime_paths
 import sidecar_lock
 
 try:  # Phase 3/4 intelligence layer — optional, guarded.
@@ -28,11 +29,10 @@ try:
 except Exception:  # pragma: no cover - defensive
     semantic_router = None  # type: ignore[assignment]
 
-ROOT = Path(__file__).resolve().parent.parent
-PTME_LOG_FILE = ROOT / "logs" / "ptme_decisions.jsonl"
-USAGE_LOG_FILE = ROOT / "logs" / "usage.jsonl"
-LIVE_TASKS_FILE = ROOT / "dashboard" / "live_tasks.json"
-LIVE_TASKS_JS_FILE = ROOT / "dashboard" / "live_tasks.js"
+PTME_LOG_FILE = runtime_paths.runtime_path("logs", "ptme_decisions.jsonl")
+USAGE_LOG_FILE = runtime_paths.runtime_path("logs", "usage.jsonl")
+LIVE_TASKS_FILE = runtime_paths.runtime_path("dashboard", "live_tasks.json")
+LIVE_TASKS_JS_FILE = runtime_paths.runtime_path("dashboard", "live_tasks.js")
 VALID_ENGINES = ("agy", "codex", "claude")
 
 # A live_tasks record left in status=running becomes a phantom "running" task on
