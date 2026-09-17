@@ -11,6 +11,8 @@ Usage:
     python scripts/task_router.py --task-id TASK-001   # route a single task by ID
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re
