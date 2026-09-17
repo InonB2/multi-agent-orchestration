@@ -25,41 +25,16 @@ import json
 import os
 import re
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+import sidecar_lock
 
 ROOT          = Path(__file__).resolve().parent.parent
 SNAPSHOTS_DIR = ROOT / "tasks" / "snapshots"
 QUEUE_DIR     = ROOT / "tasks" / "queue"
 QUEUE_FILE    = QUEUE_DIR / "resume_queue.json"
 TASKS_FILE    = ROOT / "tasks" / "active_tasks.json"
-
-
-# ---------------------------------------------------------------------------
-# File-lock helpers (cross-platform sidecar-file pattern)
-# Used to guard concurrent writes to the resume queue.
-# ---------------------------------------------------------------------------
-
-def _acquire_lock(lock_path: Path, timeout: int = 10) -> bool:
-    """Try to create *lock_path* exclusively. Returns True on success, False on timeout."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.close(fd)
-            return True
-        except FileExistsError:
-            time.sleep(0.05)
-    return False
-
-
-def _release_lock(lock_path: Path) -> None:
-    """Delete the sidecar lock file, ignoring missing-file errors."""
-    try:
-        lock_path.unlink()
-    except FileNotFoundError:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +85,7 @@ def _write_queue(entries: list):
     """Atomically write the resume queue, protected by a sidecar lock file."""
     _ensure_dirs()
     lock_path = Path(str(QUEUE_FILE) + ".lock")
-    if not _acquire_lock(lock_path):
+    if not sidecar_lock.acquire_lock(lock_path):
         print("[ERROR] Could not acquire lock on queue file", file=sys.stderr)
         sys.exit(1)
     try:
@@ -121,7 +96,7 @@ def _write_queue(entries: list):
         )
         os.replace(tmp, QUEUE_FILE)
     finally:
-        _release_lock(lock_path)
+        sidecar_lock.release_lock(lock_path)
 
 
 def _lookup_task(task_id: str) -> dict:

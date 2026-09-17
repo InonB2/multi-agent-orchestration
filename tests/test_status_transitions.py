@@ -108,7 +108,10 @@ def test_mark_done_force_overrides_gate(tmp_path, monkeypatch):
     co.cmd_mark_done(["--task", "GATE-003", "--force"])
 
     data = json.loads(tf.read_text(encoding="utf-8"))
-    assert data["tasks"][0]["status"] == "done"
+    task = data["tasks"][0]
+    assert task["status"] == "done"
+    assert task["forced"] is True
+    assert sum("FORCED:" in entry for entry in task["coordinator_log"]) == 2
 
 
 def test_mark_done_lock_released_on_rejection(tmp_path, monkeypatch):

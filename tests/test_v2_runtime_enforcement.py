@@ -128,6 +128,27 @@ def test_mark_tested_allows_independent_tester(tmp_path, monkeypatch):
     assert task["tested_by"] == "agy"
 
 
+def test_mark_tested_force_records_tester_override(tmp_path, monkeypatch):
+    tasks_file = tmp_path / "active_tasks.json"
+    _write_tasks(tasks_file, [{
+        "task_id": "QA-SELF-FORCED",
+        "title": "Runtime task",
+        "status": "in_progress",
+        "assigned_to": "codex",
+    }])
+    monkeypatch.setattr(co, "TASKS_FILE", tasks_file)
+    monkeypatch.setattr(co, "_run_checkpoint", lambda *args, **kwargs: 0)
+
+    co.cmd_mark_tested([
+        "--task", "QA-SELF-FORCED", "--tested-by", "codex", "--force",
+    ])
+
+    task = json.loads(tasks_file.read_text(encoding="utf-8"))["tasks"][0]
+    assert task["status"] == "tested"
+    assert task["forced"] is True
+    assert any("MARK-TESTED (FORCED: tester-guard)" in row for row in task["coordinator_log"])
+
+
 def test_mark_done_requires_recorded_tester_identity(tmp_path, monkeypatch, capsys):
     tasks_file = tmp_path / "active_tasks.json"
     _write_tasks(tasks_file, [{
