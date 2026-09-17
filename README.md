@@ -107,13 +107,13 @@ For always-on unattended orchestration, you can self-host AOa on a Virtual Priva
 ### Setup flow at a glance
 
 1. **Provision server**: Set up an Ubuntu VPS, configure key-based SSH, and enable `ufw` firewall (SSH only).
-2. **One-shot setup**: Clone the repository into `/opt/orchestration` and run `deploy/vps/setup.sh`. This provisions Python 3.11, creates the unprivileged `orchestrator` service user, builds a virtualenv, and configures environment defaults.
+2. **One-shot setup**: Clone the repository into `/opt/multi-agent-orchestration` and run `deploy/vps/setup.sh`. This provisions Python 3.11, reuses the `aoa` service user, builds a virtualenv, and configures environment defaults.
 3. **Background daemon**: The script installs and starts `orchestration-loop.service` via `systemd`. The loop monitors `tasks/active_tasks.json`, runs non-blocking routing passes, and auto-restarts on failure.
-4. **Optional API Gateway**: To run the Andy API Gateway behind TLS alongside the CLI adapters (`claude`, `codex`, `agy`), run `deploy/vps/setup_gateway.sh` to configure Caddy reverse-proxying with automatic HTTPS (ports 80/443).
+4. **Optional API gateway**: To run an API gateway behind TLS alongside the CLI adapters (`claude`, `codex`, `agy`), run `deploy/vps/setup_gateway.sh` to configure Caddy reverse-proxying with automatic HTTPS (ports 80/443).
 
 ### Honest scope & boundaries
 
-- **Self-contained scripts, not a managed service**: Self-hosting executes local CLI scripts and task queue loops. It does not provide a multi-tenant cloud control plane.
+- **Operational example, not a managed service**: Self-hosting executes local CLI scripts and task queue loops. It does not provide a hosted control plane or a portable always-on guarantee.
 - **Credential isolation**: Provider API keys and vendor CLI authentication remain local to the VPS (stored in mode `600` `.env` files or user keystores). No credentials or infrastructure are managed by this repo.
 - **Vendor CLI compliance**: Interactive CLI sessions (`claude setup-token`, `codex login`, `agy login`) must be authenticated manually per user, adhering to vendor ToS guidelines for automated runs.
 

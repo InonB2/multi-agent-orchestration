@@ -1,36 +1,36 @@
 #!/usr/bin/env bash
 #
-# deploy/vps/setup_gateway.sh — provision the Andy API Gateway (FastAPI/uvicorn)
-# behind Caddy (automatic HTTPS) on an Ubuntu VPS, to replace the Railway host.
+# deploy/vps/setup_gateway.sh — provision an API gateway (FastAPI/uvicorn)
+# behind Caddy (automatic HTTPS) on an Ubuntu VPS.
 #
-# OPTIONAL (MMOI self-host path). What it does (idempotent — safe to re-run):
+# OPTIONAL self-host path. What it does (idempotent — safe to re-run):
 #   1. Installs Python 3.11 + venv tooling and Caddy (apt repo)
-#   2. Ensures the non-root `mmoi` user owns the gateway
-#   3. Creates a venv at /opt/andy-gateway/.venv and installs the gateway's
+#   2. Reuses the non-root `aoa` user for the gateway and CLI logins
+#   3. Creates a venv at /opt/multi-agent-orchestration/api-gateway/.venv and installs the gateway's
 #      requirements.txt
-#   4. Seeds /opt/andy-gateway/.env (mode 600) from the example if absent
-#   5. Installs + enables the andy-gateway systemd unit (uvicorn on 127.0.0.1)
+#   4. Seeds the gateway .env (mode 600) from the example if absent
+#   5. Installs + enables the api-gateway systemd unit (uvicorn on 127.0.0.1)
 #   6. Installs the Caddyfile (reverse proxy + TLS) and reloads Caddy
 #   7. Opens ufw for HTTPS (443) and HTTP (80, for ACME) — SSH stays open
 #
 # PRE-REQUISITE: the gateway SOURCE must already be on the box at $GATEWAY_DIR.
 #   The gateway lives in its OWN repo (not this public one). Put it there first,
-#   e.g.:   sudo git clone <your-andy-gateway-repo> /opt/andy-gateway
-#   or scp the projects/andy-api-gateway folder up. This script never fetches it
+#   e.g.: sudo git clone <gateway-source-repo> /opt/multi-agent-orchestration/api-gateway
+#   This script never fetches it
 #   (it may be private) and never writes secrets.
 #
 # Set your domain so Caddy can issue a real cert (else it serves self-signed):
-#   sudo GATEWAY_DOMAIN=andy.example.com bash deploy/vps/setup_gateway.sh
+#   sudo GATEWAY_DOMAIN=gateway.example.com bash deploy/vps/setup_gateway.sh
 #
 # Run as root (sudo) on Ubuntu 22.04/24.04.
 
 set -euo pipefail
 
-MMOI_USER="${MMOI_USER:-mmoi}"
-GATEWAY_DIR="${GATEWAY_DIR:-/opt/andy-gateway}"
-GATEWAY_DOMAIN="${GATEWAY_DOMAIN:-}"      # e.g. andy.example.com (empty => local/self-signed)
+SERVICE_USER="${SERVICE_USER:-aoa}"
+GATEWAY_DIR="${GATEWAY_DIR:-/opt/multi-agent-orchestration/api-gateway}"
+GATEWAY_DOMAIN="${GATEWAY_DOMAIN:-}"      # e.g. gateway.example.com (empty => local/self-signed)
 GATEWAY_PORT="${GATEWAY_PORT:-8000}"      # uvicorn bind port (loopback only)
-SERVICE_NAME="andy-gateway"
+SERVICE_NAME="api-gateway"
 # Where this script lives, so we can find the unit + Caddyfile templates next to it.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -41,7 +41,7 @@ fi
 
 if [ ! -f "${GATEWAY_DIR}/main.py" ]; then
     echo "[gw] ERROR: gateway source not found at ${GATEWAY_DIR}/main.py." >&2
-    echo "[gw]        Put the andy-api-gateway code there first (git clone / scp), then re-run." >&2
+    echo "[gw]        Put the gateway source there first (git clone / scp), then re-run." >&2
     exit 1
 fi
 
@@ -66,28 +66,28 @@ if ! command -v caddy >/dev/null 2>&1; then
     apt-get install -y caddy
 fi
 
-echo "[gw] 2/7 ensuring '${MMOI_USER}' owns the gateway dir…"
-if ! id "$MMOI_USER" >/dev/null 2>&1; then
-    useradd --create-home --shell /bin/bash "$MMOI_USER"
+echo "[gw] 2/7 ensuring '${SERVICE_USER}' owns the gateway dir…"
+if ! id "$SERVICE_USER" >/dev/null 2>&1; then
+    useradd --system --create-home --shell /bin/bash "$SERVICE_USER"
 fi
-chown -R "$MMOI_USER:$MMOI_USER" "$GATEWAY_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$GATEWAY_DIR"
 
 echo "[gw] 3/7 creating venv + installing gateway requirements…"
-sudo -u "$MMOI_USER" python3.11 -m venv "${GATEWAY_DIR}/.venv"
-sudo -u "$MMOI_USER" "${GATEWAY_DIR}/.venv/bin/pip" install --upgrade pip
-sudo -u "$MMOI_USER" "${GATEWAY_DIR}/.venv/bin/pip" install -r "${GATEWAY_DIR}/requirements.txt"
+sudo -u "$SERVICE_USER" python3.11 -m venv "${GATEWAY_DIR}/.venv"
+sudo -u "$SERVICE_USER" "${GATEWAY_DIR}/.venv/bin/pip" install --upgrade pip
+sudo -u "$SERVICE_USER" "${GATEWAY_DIR}/.venv/bin/pip" install -r "${GATEWAY_DIR}/requirements.txt"
 
 echo "[gw] 4/7 seeding ${GATEWAY_DIR}/.env (mode 600) if absent…"
 if [ ! -f "${GATEWAY_DIR}/.env" ]; then
     cp "${SCRIPT_DIR}/.env.example" "${GATEWAY_DIR}/.env"
-    chown "$MMOI_USER:$MMOI_USER" "${GATEWAY_DIR}/.env"
+    chown "$SERVICE_USER:$SERVICE_USER" "${GATEWAY_DIR}/.env"
     chmod 600 "${GATEWAY_DIR}/.env"
-    echo "[gw]   created ${GATEWAY_DIR}/.env — EDIT IT: set ANDY_API_KEY + provider keys."
+    echo "[gw]   created ${GATEWAY_DIR}/.env — EDIT IT: set GATEWAY_API_KEY + provider keys."
 fi
 
 echo "[gw] 5/7 installing systemd unit '${SERVICE_NAME}'…"
 # Render the unit with the resolved user/dir/port so it works regardless of overrides.
-sed -e "s#@MMOI_USER@#${MMOI_USER}#g" \
+sed -e "s#@SERVICE_USER@#${SERVICE_USER}#g" \
     -e "s#@GATEWAY_DIR@#${GATEWAY_DIR}#g" \
     -e "s#@GATEWAY_PORT@#${GATEWAY_PORT}#g" \
     "${SCRIPT_DIR}/${SERVICE_NAME}.service" > "/etc/systemd/system/${SERVICE_NAME}.service"
@@ -124,5 +124,5 @@ echo "[gw]   service:  systemctl status ${SERVICE_NAME}"
 echo "[gw]   logs:     journalctl -u ${SERVICE_NAME} -f"
 echo "[gw]   caddy:    systemctl status caddy"
 echo "[gw]   health:   curl -sk https://${GATEWAY_DOMAIN:-localhost}/health"
-echo "[gw]   REMEMBER: edit ${GATEWAY_DIR}/.env (ANDY_API_KEY + provider keys), then:"
+echo "[gw]   REMEMBER: edit ${GATEWAY_DIR}/.env (GATEWAY_API_KEY + provider keys), then:"
 echo "[gw]            sudo systemctl restart ${SERVICE_NAME}"

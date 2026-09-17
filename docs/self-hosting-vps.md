@@ -1,9 +1,8 @@
 # Self-Hosting on a VPS (OPTIONAL)
 
-> **This is an optional deployment path.** Managed hosting (e.g. Railway) is the
-> default and the simplest way to run this framework — you do not need a VPS to
-> use it. Reach for this guide only if you specifically want a 24/7 instance on
-> infrastructure you fully control.
+> **This is an optional deployment path.** AOa is a local-first framework, not a
+> hosted service. Reach for this guide only if you specifically want an
+> operational example on infrastructure you fully control.
 >
 > **No credentials, provisioning, or hosting are included here.** You bring your
 > own VPS, SSH keys, and provider API keys. The files under `deploy/vps/` are
@@ -64,8 +63,8 @@ rsync --archive --chown=deploy:deploy ~/.ssh /home/deploy/
 ```
 
 Log back in as `deploy` and use `sudo` from here on. (The orchestration loop
-itself runs as a separate locked-down `orchestrator` service account created by
-the setup script — not as `deploy` or `root`.)
+itself runs as the existing `aoa` service account created by the setup script —
+not as `deploy` or `root`.)
 
 ## 4. Firewall (ufw)
 
@@ -93,18 +92,18 @@ adds it automatically). On 24.04 it is available natively.
 Clone the repo and run the provisioning script (it is idempotent):
 
 ```bash
-sudo git clone https://github.com/InonB2/multi-agent-orchestration.git /opt/orchestration
-cd /opt/orchestration
+sudo git clone https://github.com/InonB2/multi-agent-orchestration.git /opt/multi-agent-orchestration
+cd /opt/multi-agent-orchestration
 sudo bash deploy/vps/setup.sh
 ```
 
 `setup.sh` will:
 
 - install Python 3.11 + git + ufw,
-- create the non-root `orchestrator` service user,
+- create the non-root `aoa` service user,
 - create a virtualenv and install `pytest`/`flake8`/`tomli` (the core framework
   is stdlib-only; these are for tests/lint and TOML parsing on Python < 3.11),
-- copy `deploy/vps/.env.example` → `/opt/orchestration/.env` (mode `600`),
+- copy `deploy/vps/.env.example` → `/opt/multi-agent-orchestration/.env` (mode `600`),
 - install and enable the `orchestration-loop` systemd service,
 - enable the ufw firewall (SSH only).
 
@@ -113,7 +112,7 @@ sudo bash deploy/vps/setup.sh
 Edit the generated env file and add only the provider keys you use:
 
 ```bash
-sudo -u orchestrator nano /opt/orchestration/.env
+sudo -u aoa nano /opt/multi-agent-orchestration/.env
 ```
 
 ```ini
@@ -137,14 +136,14 @@ journalctl -u orchestration-loop -f      # live logs of each routing pass
 ```
 
 To feed it work, drop a `tasks/active_tasks.json` (see
-`examples/sample_active_tasks.json` for the shape) into `/opt/orchestration/tasks/`.
+`examples/sample_active_tasks.json` for the shape) into `/opt/multi-agent-orchestration/tasks/`.
 
 ---
 
 ## Updating / redeploying
 
 ```bash
-cd /opt/orchestration
+cd /opt/multi-agent-orchestration
 sudo bash deploy/vps/update.sh
 ```
 
@@ -154,48 +153,49 @@ running loop down.
 
 ---
 
-## Alternative: a systemd timer instead of a loop
+## Relationship to the existing supervisor timer
 
-If you prefer discrete scheduled runs over a long-lived process, replace the
-service with a `oneshot` unit + timer (e.g. every 5 minutes). The loop approach
-in `run_loop.sh` is simpler and is the documented default; the timer pattern is
-left as an exercise and is a drop-in replacement for `ExecStart`.
+The repository already includes `aoa-supervisor.service` and
+`aoa-supervisor.timer`, which run a single supervisor pass every five minutes.
+`orchestration-loop.service` is an alternative long-lived routing loop using the
+same `aoa` user and `/opt/multi-agent-orchestration` path. Enable one approach
+for a given deployment, not both, unless you intentionally want both workloads.
 
 ---
 
-## Optional: also host the Andy API Gateway + the 3 agent CLIs (MMOI)
+## Optional: also host an API gateway + the 3 agent CLIs
 
 The loop above is a headless task router with **no inbound port**. If you instead
-(or additionally) want this box to host the **Andy API Gateway** (the FastAPI
-routing service, normally on Railway) and run the three agent CLIs
+(or additionally) want this box to host an **API gateway** (a FastAPI routing
+service) and run the three agent CLIs
 (`claude`, `codex`, `agy`) for a CLI-default routing strategy, three extra
 scripts under `deploy/vps/` cover it:
 
 | Script | Purpose |
 |---|---|
-| `install_clis.sh` | Installs Node 20 + Claude Code + Codex CLI + Antigravity (`agy`) under a non-root `mmoi` user. Binaries only — you log each CLI in interactively once. |
-| `setup_gateway.sh` | Installs Python 3.11 + Caddy, creates a venv for the gateway at `/opt/andy-gateway`, installs the `andy-gateway` systemd unit (uvicorn on loopback) and a Caddy reverse-proxy with **automatic HTTPS**, and opens ufw 80/443. |
-| `andy-gateway.service` / `Caddyfile.example` | Templates rendered by `setup_gateway.sh`. |
+| `install_clis.sh` | Installs Node 20 + Claude Code + Codex CLI + Antigravity (`agy`) under the `aoa` user. Binaries only — you log each CLI in interactively once. |
+| `setup_gateway.sh` | Installs Python 3.11 + Caddy, creates a venv at `/opt/multi-agent-orchestration/api-gateway`, installs the `api-gateway` systemd unit (uvicorn on loopback) and a Caddy reverse-proxy with automatic HTTPS, and opens ufw 80/443. |
+| `api-gateway.service` / `Caddyfile.example` | Templates rendered by `setup_gateway.sh`. |
 
 ```bash
-# 1. Put the gateway source on the box (its own repo, may be private):
-sudo git clone <your-andy-gateway-repo> /opt/andy-gateway   # or scp it up
+# 1. Put the gateway source on the box (its own repo):
+sudo git clone <gateway-source-repo> /opt/multi-agent-orchestration/api-gateway
 
-# 2. Install the CLIs (then log each one in as the mmoi user — see below):
+# 2. Install the CLIs (then log each one in as the aoa user — see below):
 sudo bash deploy/vps/install_clis.sh
 
 # 3. Stand up the gateway behind Caddy TLS (set your domain for a real cert):
-sudo GATEWAY_DOMAIN=andy.example.com bash deploy/vps/setup_gateway.sh
+sudo GATEWAY_DOMAIN=gateway.example.com bash deploy/vps/setup_gateway.sh
 
 # 4. Add secrets, then restart:
-sudo -u mmoi nano /opt/andy-gateway/.env   # ANDY_API_KEY + provider keys
-sudo systemctl restart andy-gateway
+sudo -u aoa nano /opt/multi-agent-orchestration/api-gateway/.env   # GATEWAY_API_KEY + provider keys
+sudo systemctl restart api-gateway
 ```
 
-Log each CLI in once, interactively, as the `mmoi` user:
+Log each CLI in once, interactively, as the `aoa` user:
 
 ```bash
-sudo -iu mmoi
+sudo -iu aoa
 claude setup-token   # OAuth token (Pro/Max). Generate ON THIS BOX, never copy one.
 codex login          # device-code login -> ~/.codex/auth.json
 agy login            # device-code login -> libsecret keyring
@@ -212,11 +212,11 @@ The gateway binds **127.0.0.1 only**; Caddy is the sole public entrypoint
 
 ## Security notes
 
-- The loop runs as the unprivileged `orchestrator` user, not root, with systemd
+- The loop runs as the unprivileged `aoa` user, not root, with systemd
   hardening (`NoNewPrivileges`, `ProtectSystem=full`, `ProtectHome`, restricted
   `ReadWritePaths`).
 - No inbound ports beyond SSH. No web server, no database, no public endpoint.
-- Secrets live only in `/opt/orchestration/.env` (mode `600`, gitignored).
+- Secrets live only in `/opt/multi-agent-orchestration/.env` (mode `600`, gitignored).
 - Keep the box patched: `sudo apt update && sudo apt upgrade` (or enable
   `unattended-upgrades`).
 - **Nothing in this repo provisions infrastructure or contains credentials.**

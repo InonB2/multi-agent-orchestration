@@ -1,8 +1,8 @@
-# deploy/vps/andy-gateway.service — systemd unit for the Andy API Gateway.
+# deploy/vps/api-gateway.service — systemd unit for the API gateway.
 #
 # OPTIONAL self-host path. setup_gateway.sh renders the @PLACEHOLDERS@ and
-# installs this to /etc/systemd/system/andy-gateway.service, then:
-#   sudo systemctl enable --now andy-gateway
+# installs this to /etc/systemd/system/api-gateway.service, then:
+#   sudo systemctl enable --now api-gateway
 #
 # Runs uvicorn bound to LOOPBACK ONLY (127.0.0.1). Public traffic reaches it
 # exclusively through Caddy (TLS termination + reverse proxy). The gateway is
@@ -10,20 +10,20 @@
 # never hardcode keys here.
 
 [Unit]
-Description=Andy API Gateway (FastAPI/uvicorn) — MMOI routing layer
+Description=API Gateway (FastAPI/uvicorn) — routing layer
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 
-# Non-root service account (owns the gateway + the 3 CLI logins).
-User=@MMOI_USER@
-Group=@MMOI_USER@
+# Reuse the existing AOA service account, which owns the CLI logins.
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
 
 WorkingDirectory=@GATEWAY_DIR@
 
-# Secrets + tunables. ANDY_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY,
+# Secrets + tunables. GATEWAY_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY,
 # GOOGLE_AI_API_KEY, PORT, etc. live ONLY in this file (mode 600, gitignored).
 EnvironmentFile=-@GATEWAY_DIR@/.env
 
@@ -39,13 +39,13 @@ PrivateTmp=true
 ProtectSystem=full
 ProtectHome=read-only
 # The CLI-default path (future cli_providers module) shells out to claude/codex/
-# agy, which read creds from the mmoi home; relax ProtectHome to read-only so
-# those credential files remain readable. If the gateway needs to WRITE under
-# home for a CLI cache, add a ReadWritePaths= line for that specific dir only.
+# agy, which read credentials from the service account home; relax ProtectHome
+# to read-only so those credential files remain readable. If the gateway needs
+# to write a CLI cache, add a ReadWritePaths= line for that specific directory.
 
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=andy-gateway
+SyslogIdentifier=api-gateway
 
 [Install]
 WantedBy=multi-user.target

@@ -1,8 +1,8 @@
 # deploy/vps/Caddyfile.example — Caddy reverse proxy + automatic HTTPS for the
-# Andy API Gateway. setup_gateway.sh renders @SITE@ / @GATEWAY_PORT@ and installs
+# API gateway. setup_gateway.sh renders @SITE@ / @GATEWAY_PORT@ and installs
 # the result to /etc/caddy/Caddyfile.
 #
-# With a real domain (@SITE@ = andy.example.com), Caddy obtains and renews a
+# With a real domain (@SITE@ = gateway.example.com), Caddy obtains and renews a
 # Let's Encrypt certificate automatically — no manual certbot. With no domain,
 # setup_gateway.sh injects `tls internal` for a self-signed cert on :443.
 #
