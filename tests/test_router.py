@@ -17,6 +17,15 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 import ptme  # noqa: E402
 import router  # noqa: E402
+from pool_telemetry import PoolState  # noqa: E402
+
+
+class StaticPoolTelemetry:
+    def __init__(self, states):
+        self.states = states
+
+    def snapshot(self):
+        return self.states
 
 
 # --------------------------------------------------------------------------- helpers
@@ -32,6 +41,7 @@ def _all_available(monkeypatch, walled=()):
 def _flat_load(monkeypatch, loads=None):
     """Set deterministic per-engine load. loads: {engine: (weekly_pct, running)}."""
     loads = loads or {}
+
     def fake_load(engine):
         weekly, running = loads.get(engine, (None, 0))
         return {"weekly_pct": weekly, "running_now": running}
@@ -94,6 +104,51 @@ def test_load_balancing_breaks_capability_tie_by_running_count(monkeypatch):
     })
     result = router.route("xyzzy plugh")  # no capability matches anywhere
     assert result["engine"] == "agy"  # least busy wins
+
+
+def test_pool_telemetry_can_exclude_an_unusable_engine(monkeypatch):
+    _no_rules(monkeypatch)
+    _all_available(monkeypatch)
+    _flat_load(monkeypatch)
+    telemetry = StaticPoolTelemetry([
+        PoolState("codex-weekly", "codex", usable=False, status_reason="reserved"),
+    ])
+
+    result = router.route("implement and refactor a module", pool_telemetry=telemetry)
+
+    assert result["engine"] != "codex"
+    assert result["excluded"] == [
+        {"engine": "codex", "reason": "quota pool unusable (codex-weekly: reserved)"}
+    ]
+
+
+def test_pool_telemetry_supplies_normalized_load(monkeypatch):
+    _no_rules(monkeypatch)
+    _all_available(monkeypatch)
+    _flat_load(monkeypatch)
+    telemetry = StaticPoolTelemetry([
+        PoolState("codex-weekly", "codex", remaining_pct=5.0),
+    ])
+
+    result = router.route("xyzzy plugh", pool_telemetry=telemetry)
+
+    codex = next(score for score in result["scores"] if score["engine"] == "codex")
+    assert codex["weekly_pct"] == 95.0
+    assert result["engine"] != "codex"
+
+
+def test_pool_telemetry_failure_is_a_noop(monkeypatch):
+    class BrokenTelemetry:
+        def snapshot(self):
+            raise RuntimeError("unavailable")
+
+    _no_rules(monkeypatch)
+    _all_available(monkeypatch)
+    _flat_load(monkeypatch)
+
+    result = router.route("research and compare", pool_telemetry=BrokenTelemetry())
+
+    assert result["engine"] == "agy"
 
 
 # --------------------------------------------------------------------------- override wins

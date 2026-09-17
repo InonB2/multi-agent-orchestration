@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import ptme
+from pool_telemetry import NULL_POOL_TELEMETRY, PoolState, PoolTelemetry
 import role_scoring
 import routing_table
 
@@ -190,6 +191,40 @@ def engine_load(engine: str) -> dict:
     return {"weekly_pct": weekly_pct, "running_now": running_now}
 
 
+def _read_pool_snapshot(telemetry: PoolTelemetry) -> tuple[PoolState, ...]:
+    """Read optional telemetry defensively; routing remains available on failure."""
+    try:
+        return tuple(telemetry.snapshot())
+    except Exception:
+        return ()
+
+
+def _engine_pool_states(engine: str, states: tuple[PoolState, ...]) -> tuple[PoolState, ...]:
+    return tuple(state for state in states if state.engine == engine)
+
+
+def _pool_availability(engine: str, states: tuple[PoolState, ...]) -> tuple[bool, str | None]:
+    pools = _engine_pool_states(engine, states)
+    if not pools or any(pool.usable for pool in pools):
+        return True, None
+    reasons = "; ".join(
+        "{}: {}".format(pool.id, pool.status_reason or "unusable") for pool in pools
+    )
+    return False, "quota pool unusable ({})".format(reasons)
+
+
+def _pool_weekly_pct(engine: str, states: tuple[PoolState, ...]) -> float | None:
+    remaining = [
+        float(pool.remaining_pct)
+        for pool in _engine_pool_states(engine, states)
+        if pool.usable and pool.remaining_pct is not None
+    ]
+    if not remaining:
+        return None
+    best_remaining = max(0.0, min(100.0, max(remaining)))
+    return 100.0 - best_remaining
+
+
 # ---------------------------------------------------------------------------
 # route
 # ---------------------------------------------------------------------------
@@ -199,10 +234,15 @@ def _score_engine(
     config: RouterConfig,
     role: str | None = None,
     load: dict | None = None,
+    pool_states: tuple[PoolState, ...] = (),
 ) -> dict:
     cap, matched = capability_score(task_text, engine)
     cap *= config.capability_weight
     load = load if load is not None else engine_load(engine)
+    pool_weekly_pct = _pool_weekly_pct(engine, pool_states)
+    if pool_weekly_pct is not None:
+        load = dict(load)
+        load["weekly_pct"] = pool_weekly_pct
     weekly = load.get("weekly_pct")
     running = int(load.get("running_now") or 0)
 
@@ -250,6 +290,7 @@ def route(
     override_engine: str | None = None,
     role: str | None = None,
     config: RouterConfig | None = None,
+    pool_telemetry: PoolTelemetry = NULL_POOL_TELEMETRY,
 ) -> dict:
     """Choose engine+role+model(engine-scoped)+effort WITH an explanation.
 
@@ -270,6 +311,7 @@ def route(
     resolved_role = (role or infer_role(task_text))
     complexity = ptme.classify_complexity(task_text)
     failover_reasons: list[str] = []
+    pool_states = _read_pool_snapshot(pool_telemetry)
 
     # --- 1) explicit override wins -------------------------------------------
     if override_engine:
@@ -289,6 +331,8 @@ def route(
     for engine in candidates:
         ok, reason = engine_available(engine)
         if ok:
+            ok, reason = _pool_availability(engine, pool_states)
+        if ok:
             available.append(engine)
         else:
             excluded.append({"engine": engine, "reason": reason})
@@ -305,6 +349,7 @@ def route(
                     config,
                     role=resolved_role,
                     load={"weekly_pct": None, "running_now": 0},
+                    pool_states=pool_states,
                 )
                 for e in candidates
             ),
@@ -322,7 +367,16 @@ def route(
 
     # --- 3) score available engines by capability minus load -----------------
     scored = sorted(
-        (_score_engine(task_text, e, config, role=resolved_role) for e in available),
+        (
+            _score_engine(
+                task_text,
+                e,
+                config,
+                role=resolved_role,
+                pool_states=pool_states,
+            )
+            for e in available
+        ),
         key=lambda s: (s["final_score"], s["capability_score"]),
         reverse=True,
     )
