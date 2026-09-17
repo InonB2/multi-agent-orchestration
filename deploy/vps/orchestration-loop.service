@@ -3,7 +3,7 @@
 # OPTIONAL self-host path. Install to /etc/systemd/system/ (setup.sh does this),
 # then:  sudo systemctl enable --now orchestration-loop
 #
-# Auto-restarts on crash. Secrets are injected from /opt/orchestration/.env via
+# Auto-restarts on crash. Secrets are injected from /opt/multi-agent-orchestration/.env via
 # EnvironmentFile — never hardcode keys in this unit.
 
 [Unit]
@@ -15,16 +15,16 @@ Wants=network-online.target
 Type=simple
 
 # Non-root service account created by setup.sh.
-User=orchestrator
-Group=orchestrator
+User=aoa
+Group=aoa
 
-WorkingDirectory=/opt/orchestration
+WorkingDirectory=/opt/multi-agent-orchestration
 
 # Secrets + tunables. "-" prefix means "do not fail if the file is missing",
 # but you should create it from .env.example before enabling the service.
-EnvironmentFile=-/opt/orchestration/.env
+EnvironmentFile=-/opt/multi-agent-orchestration/.env
 
-ExecStart=/usr/bin/env bash /opt/orchestration/deploy/vps/run_loop.sh
+ExecStart=/usr/bin/env bash /opt/multi-agent-orchestration/deploy/vps/run_loop.sh
 
 # Auto-restart on any exit, with backoff to avoid hammering on a hard failure.
 Restart=always
@@ -35,7 +35,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/opt/orchestration/tasks
+ReadWritePaths=/opt/multi-agent-orchestration/tasks
 
 StandardOutput=journal
 StandardError=journal

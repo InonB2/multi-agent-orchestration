@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/opt/orchestration}"
+APP_DIR="${APP_DIR:-/opt/multi-agent-orchestration}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 ROUTER_INTERVAL="${ROUTER_INTERVAL:-300}"
 

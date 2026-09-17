@@ -8,8 +8,8 @@
 #
 # What it does (idempotent — safe to re-run):
 #   1. Installs Python 3.11 + git + ufw
-#   2. Creates a non-root 'orchestrator' service user
-#   3. Clones (or updates) the repo into /opt/orchestration
+#   2. Creates the existing non-root 'aoa' service user
+#   3. Clones (or updates) the repo into /opt/multi-agent-orchestration
 #   4. Creates a virtualenv and installs dev deps (pytest/flake8/tomli)
 #   5. Installs + enables the systemd loop service (auto-restart)
 #   6. Configures a basic ufw firewall (SSH only)
@@ -23,8 +23,8 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/InonB2/multi-agent-orchestration.git}"
-APP_DIR="${APP_DIR:-/opt/orchestration}"
-APP_USER="${APP_USER:-orchestrator}"
+APP_DIR="${APP_DIR:-/opt/multi-agent-orchestration}"
+APP_USER="${APP_USER:-aoa}"
 SERVICE_NAME="orchestration-loop"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -47,7 +47,7 @@ fi
 
 echo "[setup] 2/6 creating non-root service user '${APP_USER}'…"
 if ! id "$APP_USER" >/dev/null 2>&1; then
-    useradd --system --create-home --shell /usr/sbin/nologin "$APP_USER"
+    useradd --system --create-home --shell /bin/bash "$APP_USER"
 fi
 
 echo "[setup] 3/6 cloning/updating repo into ${APP_DIR}…"
